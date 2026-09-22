@@ -1,0 +1,67 @@
+# Contributing to deinterleaving-by-smart-scan
+
+Thanks for your interest in contributing to this SIH 2026 (Problem Statement
+#26055) project! This document covers how to report issues, propose changes,
+and submit pull requests.
+
+## Getting Started
+
+1. Fork the repository and clone your fork:
+   ```bash
+   git clone https://github.com/<your-username>/deinterleaving-by-smart-scan.git
+   cd deinterleaving-by-smart-scan
+   ```
+2. Create a virtual environment and install dependencies:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate      # Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+3. Create a branch for your change:
+   ```bash
+   git checkout -b feature/short-description
+   ```
+
+## Project Layout
+
+The core pipeline modules (`sim.py`, `scheduler.py`, `deinterleave.py`,
+`identify.py`, `evaluate.py`, `data_io.py`, `mini_h5.py`, `run_all.py`) import
+each other directly (e.g. `scheduler.py` does `from sim import Twin,
+Emitter`), so please keep them as siblings in the same folder rather than
+moving individual files into subfolders — that will break imports.
+
+- `out/` — generated schedules, allocations, and prototype data. Don't hand-edit
+  files here; they're produced by running the pipeline.
+- `proto/` — the interactive HTML demo (`build.py` + `template.html`). It
+  reads `../out/prototype_data.json`, so `proto/` and `out/` must stay
+  siblings of each other.
+
+## Reporting Issues
+
+- Search [existing issues](../../issues) before opening a new one.
+- Include steps to reproduce, expected behavior, and actual behavior.
+- For scheduling/deinterleaving bugs, describe (or attach) the scenario file
+  used, e.g. which `config_*.h5`.
+
+## Making Changes
+
+- Keep pull requests focused on a single change.
+- Add or update docstrings/comments for any new functions.
+- If you change scheduling or deinterleaving logic, re-run
+  ```bash
+  python run_all.py
+  ```
+  and update `docs/results.md` (or `requirements.md`) if the metrics change.
+- Follow the existing code style (PEP 8 for Python).
+
+## Submitting a Pull Request
+
+1. Push your branch and open a PR against `main`.
+2. Describe **what** changed and **why** in the PR description.
+3. Link any related issues.
+4. Be ready to respond to review comments — small follow-up commits are fine.
+
+## Code of Conduct
+
+By participating in this project, you agree to abide by our
+[Code of Conduct](CODE_OF_CONDUCT.md).
