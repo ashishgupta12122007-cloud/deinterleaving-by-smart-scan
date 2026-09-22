@@ -142,7 +142,7 @@ Contributions are welcome! See [CONTRIBUTING.md](./Contributing.md) for how to r
 
 ## 📜 Code of Conduct
 
-This project follows a [Code of Conduct](./Code-Of-Conduct.md). By participating, you're expected to uphold it.
+This project follows a [Code of Conduct](./Code-Of-Conduct). By participating, you're expected to uphold it.
 
 ## ⚖️ License
 
