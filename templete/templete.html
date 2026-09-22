@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Scan for Electronic Warfare - SIH 26055</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="D:\sih project\New folder (4)\interleaving-by-smart-scan\static\css\smart_scan_separate.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div>
+      <h1>Smart Scan for Electronic Warfare</h1>
+      <p class="lede">A receiver that hears 1 GHz at a time has 30 seconds to find and characterize about 100 radars between 0 and 18 GHz. Compare the fixed sweep in your data with a machine-learned dwell schedule, then look at how overlapping pulses are pulled apart.</p>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px 22px">
+      <div class="field"><label id="lblsc">Scenario file</label>
+        <div class="seg" id="segsc" role="group" aria-labelledby="lblsc"></div></div>
+      <div class="field"><label id="lblpol">Show the receiver following</label>
+        <div class="seg" id="segpol" role="group" aria-labelledby="lblpol">
+          <button class="base" data-pol="base" aria-pressed="false">Fixed sweep (your data)</button>
+          <button class="ml" data-pol="ml" aria-pressed="true">SmartScan-ML</button>
+        </div></div>
+    </div>
+  </div>
+</header>
+
+<div class="bar" role="region" aria-label="Playback">
+  <div class="wrap">
+    <button class="btn primary" id="play" aria-label="Play or pause">Play</button>
+    <button class="btn" id="restart">Restart</button>
+    <div class="seg" id="segspeed" role="group" aria-label="Playback speed">
+      <button data-sp="1" aria-pressed="false">1x</button><button data-sp="3" aria-pressed="true">3x</button><button data-sp="10" aria-pressed="false">10x</button>
+    </div>
+    <div class="timeline"><span class="readout" id="tread">0.0 s</span>
+      <input type="range" id="tslider" min="0" max="30" step="0.05" value="0" aria-label="Time in the 30 second collection"></div>
+    <div class="dwellinfo" id="dwellinfo"></div>
+  </div>
+</div>
+
+<main>
+<div class="wrap">
+  <div class="grid">
+    <section class="card" aria-labelledby="h-scene">
+      <header><h2 id="h-scene">The scene</h2>
+        <p>Receiver at the diamond, enemy transmitters as triangles (hollow ones are ground truth from the file, shown for context; the receiver only ever learns bearings). Lines from the receiver point at radars it has picked up; a bright line from a radar means its beam is sweeping across the receiver while the receiver is tuned to its frequency.</p></header>
+      <div class="scenewrap" id="scenewrap"><canvas id="cscene" role="img" aria-label="Map of receiver and enemy transmitters"></canvas><div class="tip" id="tip"></div></div>
+      <div class="legend" id="legscene"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-res">
+      <header><h2 id="h-res">What the schedule changes</h2>
+        <div class="seg" id="segk" role="group" aria-label="Threshold">
+          <button data-k="20" aria-pressed="true">Detected, 20 pulses</button><button data-k="100" aria-pressed="false">Characterized, 100 pulses</button>
+        </div></header>
+      <div class="kpis" id="kpis"></div>
+      <canvas id="cchart" role="img" aria-label="Emitters found over time for each schedule"></canvas>
+      <div class="mini" id="mini"></div>
+      <p class="note" id="resnote"></p>
+    </section>
+
+    <section class="card wide" aria-labelledby="h-spec">
+      <header><h2 id="h-spec">Where the receiver listens</h2>
+        <p id="specsub"></p></header>
+      <canvas id="cspec" role="img" aria-label="Spectrum of emitters, current receiver window and dwell schedules"></canvas>
+      <div class="legend" id="legspec"></div>
+    </section>
+
+    <section class="card wide" aria-labelledby="h-lab">
+      <header><h2 id="h-lab">Signal lab: separating overlapping pulses</h2>
+        <p>Real pulse descriptors from one 50-100 ms dwell of the fixed sweep. Dozens of radars arrive interleaved; the deinterleaver splits them by bearing and pulse width, and a classifier names each pulse train.</p></header>
+      <div class="snaps" id="snaps" role="group" aria-label="Choose a dwell"></div>
+      <div class="labgrid">
+        <div class="sub"><h3>Pulses in the dwell</h3><p class="cap" id="scatcap"></p><canvas id="cscat" role="img" aria-label="Pulse frequency against time, coloured by separated emitter"></canvas></div>
+        <div class="sub"><h3>Four microseconds where pulses overlap</h3><p class="cap" id="microcap"></p>
+          <canvas id="cenv" role="img" aria-label="Envelope of overlapping pulses"></canvas>
+          <canvas id="craw" role="img" aria-label="Raw superimposed waveform"></canvas>
+          <div class="sliderrow"><label for="cur">Zoom position</label><input type="range" id="cur" min="0" max="4" step="0.01" value="1"><span id="curv"></span></div>
+        </div>
+        <div class="sub"><h3>Spectrum of the overlap, recovered by FFT</h3><p class="cap" id="fftcap"></p><canvas id="cfft" role="img" aria-label="FFT of the overlapping pulses with detected frequency peaks"></canvas><div id="peaks" class="hint" style="margin-top:8px"></div></div>
+        <div class="sub"><h3>Separated emitters</h3><p class="cap" id="tabcap"></p><div class="tablewrap"><table id="tab"><thead><tr><th></th><th>Radar type (classifier)</th><th>MHz</th><th>PW us</th><th>PRI us</th><th>Bearing</th><th>Pulses</th></tr></thead><tbody></tbody></table></div></div>
+      </div>
+    </section>
+
+    <section class="card wide" aria-labelledby="h-how">
+      <header><h2 id="h-how">How it works</h2></header>
+      <div class="method">
+        <div><h3>A model of your receiver</h3><p>Positions, beam rotation, transmit power, distance and antenna pattern are rebuilt from the metadata in each file. The model reproduces which radars the fixed sweep actually heard: rank correlation <b id="m-sp"></b>, and it predicts <b id="m-pred"></b> detections where the real data holds <b id="m-real"></b> (mean of five files).</p></div>
+        <div><h3>What it learns</h3><p>For every radar in the training scenarios: the chance of 20 (or 100) pulses against seconds of dwell. An isotonic regression calibrates those chances against real pulse counts, so weak long-range radars are not over-promised.</p></div>
+        <div><h3>The schedule</h3><p>A greedy planner spends each next 0.1 s where it adds the most expected radars, then interleaves the visits so no band waits long. It drops windows with nothing in them and stays longer where fast, weak radars are hard to catch.</p></div>
+        <div><h3>Identification</h3><p>DBSCAN on bearing and pulse width, then a merge of fragments that share bearing and carrier, recovers <b id="m-rec"></b> of the radars in the 60 hardest dwells per file. A random forest names the type from frequency, pulse width and PRI: <b id="m-top1"></b> top-1, <b id="m-top3"></b> top-3 on files it never saw.</p></div>
+      </div>
+      <div class="caveat">
+        <p><b>Read the numbers with care.</b> The SmartScan-ML counts come from the digital twin, not from a replay of the organizers' generator. Each scenario's schedule was learned from the other four files only. The fixed-sweep curve is measured from your pulses; its twin version is drawn dashed so you can see how close the twin is.</p>
+        <p>Your files list a 500 MHz bandwidth, but 99.985% of pulses land within 500 MHz either side of the dwell centre, so the twin uses a 1 GHz window. If the official scorer uses 250 MHz per side, re-run the planner with that value. Three to six radars per scenario transmit above 18 GHz (35 to 94 GHz); no schedule can hear them.</p>
+        <p>The waveform is synthesized from pulse descriptors (frequency, width, amplitude, arrival time). The files contain no raw IQ samples. Amplitudes in the zoomed waveform are compressed to half their dB range so weak radars stay visible; the FFT uses true levels.</p>
+      </div>
+    </section>
+  </div>
+</div>
+</main>
+
+
+
+  <script src="D:\sih project\New folder (4)\interleaving-by-smart-scan\static\js\smart_scan_separate.js"></script>
+</body>
+</html>
