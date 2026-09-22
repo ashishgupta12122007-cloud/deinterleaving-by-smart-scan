@@ -156,6 +156,6 @@ Built for **Smart India Hackathon 2026, Problem Statement #26055**.
 
 - **Team Name:** Interstellar
 - **Institution:** CCET
-- **Team Members:** Ashish Gupta, Mridul Chaudary, Divesh Thakur, Ayush Ahuja, Mayank Garg 
+- **Team Members:** Ashish Gupta, Mradul Chaudary, Divesh Thakur, Ayush Ahuja, Mayank Garg 
 
 Questions or want to collaborate? Open an [issue](../../issues).
