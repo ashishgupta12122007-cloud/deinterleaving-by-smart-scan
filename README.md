@@ -154,9 +154,8 @@ Built for **Smart India Hackathon 2026, Problem Statement #26055**.
 
 > ✏️ *Add your team name, institution (e.g. CCET), teammates' names/GitHub handles, and mentor here.*
 
-- **Team Name:** _add here_
-- **Institution:** _add here_
-- **Team Members:** _add here_
-- **Mentor(s):** _add here_
+- **Team Name:** Interstellar
+- **Institution:** CCET
+- **Team Members:** Ashish Gupta, Mridul Chaudary, Divesh Thakur, Ayush Ahuja, Mayank Garg 
 
 Questions or want to collaborate? Open an [issue](../../issues).
