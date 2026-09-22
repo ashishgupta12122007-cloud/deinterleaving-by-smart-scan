@@ -142,11 +142,11 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for how to rep
 
 ## 📜 Code of Conduct
 
-This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you're expected to uphold it.
+This project follows a [Code of Conduct](./Code_Of_Conduct.md). By participating, you're expected to uphold it.
 
 ## ⚖️ License
 
-Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
+Distributed under the **MIT License**. See [LICENSE](./License) for details.
 
 ## 👥 Brought to You By
 
