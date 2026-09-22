@@ -138,7 +138,7 @@ See [`docs/results.md`](docs/results.md) for scenario-by-scenario detection curv
 
 ## 🤝 Contributing
 
-Contributions are welcome! See [CONTRIBUTING.md](./Contributing.md) for how to report issues and submit pull requests.
+Contributions are welcome! See [CONTRIBUTING.md](./Contributing) for how to report issues and submit pull requests.
 
 ## 📜 Code of Conduct
 
