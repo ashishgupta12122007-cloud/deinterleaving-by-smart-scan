@@ -132,7 +132,7 @@ This reads `out/prototype_data.json` + `proto/template.html` and writes `proto/s
 
 ## 📈 Results
 
-See [`docs/results.md`](docs/results.md) for scenario-by-scenario detection curves, time-to-detect, and wasted-dwell metrics.
+See [`docs/results.md`](https://github.com/ashishgupta12122007-cloud/deinterleaving-by-smart-scan/blob/main/results%2Creq/results.md) for scenario-by-scenario detection curves, time-to-detect, and wasted-dwell metrics.
 
 ---
 
