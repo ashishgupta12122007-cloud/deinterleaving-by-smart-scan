@@ -2,15 +2,18 @@
 
 ## Our Pledge
 
-We as members, contributors, and leaders pledge to make participation in our
-community a harassment-free experience for everyone, regardless of age, body
-size, visible or invisible disability, ethnicity, sex characteristics, gender
-identity and expression, level of experience, education, socio-economic status,
-nationality, personal appearance, race, caste, color, religion, or sexual
-identity and orientation.
+We as members, contributors, and leaders of **deinterleaving-by-smart-scan**
+pledge to make participation in our project a harassment-free experience for
+everyone, regardless of age, body size, visible or invisible disability,
+ethnicity, sex characteristics, gender identity and expression, level of
+experience, education, socio-economic status, nationality, personal
+appearance, race, caste, color, religion, or sexual identity and orientation.
 
 We pledge to act and interact in ways that contribute to an open, welcoming,
-diverse, inclusive, and healthy community.
+diverse, inclusive, and healthy community — this project is built as part of
+**Smart India Hackathon 2026 (Problem Statement #26055)** and we want it to be
+a positive experience for everyone involved, from teammates to reviewers to
+anyone who finds and uses this repository later.
 
 ## Our Standards
 
@@ -20,7 +23,7 @@ Examples of behavior that contributes to a positive environment:
 - Being respectful of differing opinions, viewpoints, and experiences
 - Giving and gracefully accepting constructive feedback
 - Accepting responsibility and apologizing for mistakes, and learning from them
-- Focusing on what is best for the community as a whole
+- Focusing on what is best for the project and the team as a whole
 
 Examples of unacceptable behavior:
 
@@ -29,7 +32,7 @@ Examples of unacceptable behavior:
 - Public or private harassment
 - Publishing others' private information without explicit permission
 - Other conduct which could reasonably be considered inappropriate in a
-  professional setting
+  professional or academic setting
 
 ## Enforcement Responsibilities
 
@@ -40,16 +43,17 @@ harmful.
 
 ## Scope
 
-This Code of Conduct applies within all project spaces (issues, pull requests,
-discussions) and also applies when an individual is officially representing
-the project in public spaces.
+This Code of Conduct applies within all project spaces — issues, pull
+requests, discussions, and commit messages — and also applies when an
+individual is officially representing the project in public spaces, including
+SIH demos, presentations, and related events.
 
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainers by opening an issue or contacting the team
-directly (see the **Brought to You By** section of the [README](README.md)).
-All complaints will be reviewed and investigated promptly and fairly.
+reported by opening an issue or contacting the maintainers directly (see the
+**Brought to You By** section of the [README](README.md)). All complaints
+will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 
@@ -58,4 +62,3 @@ version 2.1, available at
 <https://www.contributor-covenant.org/version/2/1/code_of_conduct.html>.
 
 [homepage]: https://www.contributor-covenant.org
-
