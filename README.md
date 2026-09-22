@@ -152,7 +152,7 @@ Distributed under the **MIT License**. See [LICENSE](./License) for details.
 
 Built for **Smart India Hackathon 2026, Problem Statement #26055**.
 
-> ✏️ *Add your team name, institution (e.g. CCET), teammates' names/GitHub handles, and mentor here.*
+
 
 - **Team Name:** Interstellar
 - **Project Name:** Aeges
