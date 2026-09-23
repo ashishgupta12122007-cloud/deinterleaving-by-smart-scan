@@ -1,0 +1,2598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Smart Deinterleaving Scheduler — SIH PS 26055</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --bg:#00072D;
+  --panel-1:#001C55;
+  --panel-2:#0A2472;
+  --accent:#0E6BA8;
+  --hi:#A6E1FA;
+  --text:#EEF3FA;
+  --text-dim:#93A9CC;
+  --text-faint:#5D7096;
+  --line:rgba(166,225,250,0.14);
+  --line-strong:rgba(166,225,250,0.28);
+  --em1:#A6E1FA;
+  --em2:#F2B84B;
+  --em3:#59D6A6;
+  --radius:2px;
+  --font-ui:'Space Grotesk',Inter,system-ui,sans-serif;
+  --font-body:'Inter',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,monospace;
+  --nav-h:76px;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;}
+html{scroll-padding-top:calc(var(--nav-h) + 12px);}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-body);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+::selection{ background:var(--hi); color:var(--bg); }
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background:var(--bg); }
+::-webkit-scrollbar-thumb{ background:var(--panel-2); border:2px solid var(--bg); border-radius:8px; }
+::-webkit-scrollbar-thumb:hover{ background:var(--accent); }
+
+a{ color:inherit; }
+button{ font-family:inherit; }
+
+h1,h2,h3,h4{ font-family:var(--font-ui); margin:0; letter-spacing:-0.01em; }
+p{ margin:0; }
+.mono{ font-family:var(--font-mono); }
+
+/* layered background */
+.bg-layer{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(1200px 600px at 82% -10%, rgba(10,36,114,0.55), transparent 60%),
+    radial-gradient(900px 500px at -10% 30%, rgba(14,107,168,0.28), transparent 60%),
+    radial-gradient(1400px 800px at 50% 120%, rgba(0,28,85,0.6), transparent 60%),
+    linear-gradient(180deg, #00051f 0%, var(--bg) 100%);
+}
+.bg-grid{
+  position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.5;
+  background-image:
+    linear-gradient(rgba(166,225,250,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(166,225,250,0.045) 1px, transparent 1px);
+  background-size:42px 42px;
+  mask-image:radial-gradient(1200px 800px at 50% 0%, black 40%, transparent 85%);
+}
+
+.wrap{ position:relative; z-index:1; max-width:1240px; margin:0 auto; padding:0 28px; }
+
+/* ============================================================
+   TOP STATUS BAR
+   ============================================================ */
+.statusbar{
+  position:relative; z-index:30;
+  border-bottom:1px solid var(--line);
+  background:rgba(0,7,45,0.6);
+}
+.statusbar-inner{
+  max-width:1240px; margin:0 auto; padding:6px 28px;
+  display:flex; align-items:center; justify-content:space-between;
+  font-family:var(--font-mono); font-size:11px; color:var(--text-faint); letter-spacing:0.04em;
+}
+.dot{ display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--hi); margin-right:6px; box-shadow:0 0 6px var(--hi); }
+.dot.pulse{ animation:blink 2.2s ease-in-out infinite; }
+@keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
+/* ============================================================
+   NAVBAR
+   ============================================================ */
+header.nav{
+  position:sticky; top:0; z-index:40;
+  height:var(--nav-h);
+  display:flex; align-items:center;
+  background:rgba(0,7,45,0.35);
+  border-bottom:1px solid transparent;
+  transition:background .35s ease, border-color .35s ease, height .35s ease, backdrop-filter .35s ease;
+}
+header.nav.scrolled{
+  height:60px;
+  background:rgba(0,7,45,0.86);
+  backdrop-filter:blur(14px) saturate(140%);
+  border-bottom:1px solid var(--line);
+}
+.nav-inner{
+  width:100%; max-width:1240px; margin:0 auto; padding:0 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:24px;
+}
+.brand{ display:flex; align-items:center; gap:12px; text-decoration:none; cursor:pointer; background:none; border:none; padding:0; }
+.brand-mark{
+  width:34px; height:34px; flex:none; border:1px solid var(--line-strong); border-radius:50%;
+  display:grid; place-items:center; position:relative;
+  background:radial-gradient(circle at 50% 50%, rgba(166,225,250,0.14), transparent 70%);
+}
+.brand-mark::before{ content:''; position:absolute; width:14px; height:14px; border:1px solid var(--hi); border-radius:50%; opacity:.6; }
+.brand-mark::after{ content:''; position:absolute; width:4px; height:4px; border-radius:50%; background:var(--hi); box-shadow:0 0 6px var(--hi); }
+.brand-text{ font-family:var(--font-ui); font-weight:600; font-size:12.5px; line-height:1.25; letter-spacing:0.06em; color:var(--text); }
+.brand-text span{ display:block; color:var(--text-dim); font-weight:500; }
+
+nav.primary{ display:flex; gap:2px; align-items:center; }
+nav.primary a{
+  position:relative; text-decoration:none; color:var(--text-dim);
+  font-family:var(--font-ui); font-size:13px; font-weight:500; letter-spacing:0.03em;
+  padding:8px 14px; border-radius:var(--radius); transition:color .2s ease;
+}
+nav.primary a:hover{ color:var(--text); }
+nav.primary a.active{ color:var(--hi); }
+nav.primary a.active::after{
+  content:''; position:absolute; left:14px; right:14px; bottom:2px; height:1.5px;
+  background:var(--hi); box-shadow:0 0 8px var(--hi);
+}
+.nav-right{ display:flex; align-items:center; gap:14px; }
+.nav-ps{
+  font-family:var(--font-mono); font-size:11px; color:var(--text-faint); display:flex; align-items:center;
+  border:1px solid var(--line); padding:5px 10px; border-radius:var(--radius);
+}
+.icon-btn{
+  width:36px; height:36px; display:grid; place-items:center; border:1px solid var(--line);
+  border-radius:var(--radius); color:var(--text-dim); text-decoration:none; transition:all .2s ease; background:transparent;
+}
+.icon-btn:hover{ color:var(--hi); border-color:var(--line-strong); box-shadow:0 0 12px rgba(166,225,250,0.15); }
+.nav-toggle{ display:none; }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn{
+  display:inline-flex; align-items:center; gap:10px;
+  font-family:var(--font-ui); font-weight:500; font-size:13.5px; letter-spacing:0.02em;
+  padding:13px 22px; border-radius:var(--radius); cursor:pointer; text-decoration:none;
+  border:1px solid var(--line-strong); background:transparent; color:var(--text);
+  transition:border-color .2s ease, box-shadow .2s ease, transform .15s ease, background .2s ease;
+  white-space:nowrap;
+}
+.btn:active{ transform:translateY(1px); }
+.btn .arrow{ transition:transform .25s ease; }
+.btn:hover .arrow{ transform:translateX(4px); }
+.btn-primary{ background:linear-gradient(180deg, var(--accent), #0a5a8f); border-color:rgba(166,225,250,0.4); color:#fff; }
+.btn-primary:hover{ box-shadow:0 0 0 1px var(--hi), 0 0 24px rgba(14,107,168,0.55); }
+.btn-ghost:hover{ border-color:var(--hi); color:var(--hi); box-shadow:0 0 16px rgba(166,225,250,0.12); }
+.btn-sm{ padding:9px 15px; font-size:12.5px; }
+.btn[disabled]{ opacity:0.4; cursor:not-allowed; }
+.link-row{ display:flex; gap:22px; flex-wrap:wrap; }
+.link-row a{
+  font-family:var(--font-mono); font-size:12px; color:var(--text-dim); text-decoration:none;
+  border-bottom:1px solid transparent; padding-bottom:2px; transition:color .2s, border-color .2s;
+}
+.link-row a:hover{ color:var(--hi); border-color:var(--hi); }
+
+/* ============================================================
+   PAGES / TRANSITIONS
+   ============================================================ */
+.page{ display:none; }
+.page.active{ display:block; animation:pageIn .5s ease both; }
+@keyframes pageIn{ from{ opacity:0; transform:translateY(10px);} to{ opacity:1; transform:translateY(0);} }
+
+section{ position:relative; padding:96px 0; border-bottom:1px solid var(--line); }
+section:last-of-type{ border-bottom:none; }
+.section-tight{ padding:64px 0; }
+
+.eyebrow{
+  font-family:var(--font-mono); font-size:11.5px; color:var(--hi); letter-spacing:0.14em;
+  display:flex; align-items:center; gap:8px; margin-bottom:18px;
+}
+.eyebrow::before{ content:''; width:18px; height:1px; background:var(--hi); }
+
+h2.h-section{ font-size:clamp(26px,3.4vw,40px); font-weight:600; line-height:1.15; max-width:760px; }
+.lede{ font-family:var(--font-body); font-size:16px; line-height:1.7; color:var(--text-dim); max-width:640px; margin-top:16px; }
+.section-head{ margin-bottom:52px; }
+
+/* ============================================================
+   PANELS / CARDS
+   ============================================================ */
+.panel{
+  background:linear-gradient(180deg, rgba(10,36,114,0.35), rgba(0,28,85,0.25));
+  border:1px solid var(--line); border-radius:var(--radius); padding:22px;
+  transition:border-color .25s ease, transform .25s ease, background .25s ease;
+}
+.panel:hover{ border-color:var(--line-strong); transform:translateY(-2px); }
+.panel-tag{
+  font-family:var(--font-mono); font-size:10.5px; letter-spacing:0.1em; color:var(--text-faint); margin-bottom:10px;
+  display:block;
+}
+.panel-value{ font-family:var(--font-ui); font-size:15px; font-weight:600; color:var(--text); }
+
+.grid{ display:grid; gap:16px; }
+.grid-5{ grid-template-columns:repeat(5,1fr); }
+.grid-4{ grid-template-columns:repeat(4,1fr); }
+.grid-3{ grid-template-columns:repeat(3,1fr); }
+.grid-2{ grid-template-columns:repeat(2,1fr); }
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero{ padding-top:64px; padding-bottom:80px; border-bottom:1px solid var(--line); }
+.hero-grid{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:50px; align-items:center; }
+.hero h1{ font-size:clamp(40px,5.6vw,66px); font-weight:700; line-height:1.02; letter-spacing:-0.02em; margin:16px 0 20px; }
+.hero-sub{ font-family:var(--font-ui); font-size:17px; color:var(--hi); font-weight:500; margin-bottom:14px; }
+.hero-desc{ font-size:15.5px; line-height:1.7; color:var(--text-dim); max-width:520px; margin-bottom:32px; }
+.hero-cta{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:28px; }
+
+.radar-box{ position:relative; aspect-ratio:1/1; max-width:480px; margin:0 auto; }
+.radar-caption{ text-align:center; font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); letter-spacing:0.12em; margin-top:14px; }
+
+/* quick system panel */
+.sys-panel{ margin-top:12px; }
+
+/* ============================================================
+   DIAGRAM: emitters -> mixed -> separated
+   ============================================================ */
+.flow-diagram{ display:grid; grid-template-columns:1fr auto 1fr; gap:26px; align-items:center; }
+.flow-arrow{ font-family:var(--font-mono); color:var(--hi); font-size:20px; }
+.emitter-row{ display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.emitter-label{ width:78px; flex:none; font-family:var(--font-mono); font-size:11px; color:var(--text-dim); }
+.emitter-track{ flex:1; height:34px; }
+
+/* Panel used as sub-blocks */
+.subpanel{ border:1px solid var(--line); border-radius:var(--radius); padding:18px; background:rgba(0,28,85,0.28); }
+
+/* ============================================================
+   TABLES / PDW
+   ============================================================ */
+.pdw-table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:13px; }
+.pdw-table th{ text-align:left; color:var(--text-faint); font-weight:500; font-size:10.5px; letter-spacing:0.08em; padding:8px 10px; border-bottom:1px solid var(--line-strong); }
+.pdw-table td{ padding:9px 10px; border-bottom:1px solid var(--line); color:var(--text); }
+.pdw-table tr:hover td{ background:rgba(166,225,250,0.04); }
+.illustrative-tag{
+  display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:10px; color:var(--text-faint);
+  border:1px dashed var(--line-strong); padding:4px 8px; border-radius:var(--radius); margin-bottom:14px; letter-spacing:0.04em;
+}
+
+.pdw-cards{ display:grid; grid-template-columns:repeat(5,1fr); gap:14px; }
+.pdw-card{
+  border:1px solid var(--line); border-radius:var(--radius); padding:16px; cursor:pointer; background:rgba(10,36,114,0.22);
+  transition:all .2s ease; text-align:left;
+}
+.pdw-card:hover, .pdw-card.open{ border-color:var(--hi); box-shadow:0 0 18px rgba(166,225,250,0.14); }
+.pdw-card .abbr{ font-family:var(--font-mono); font-size:22px; color:var(--hi); font-weight:600; }
+.pdw-card .full{ font-family:var(--font-ui); font-size:12.5px; color:var(--text-dim); margin-top:6px; }
+.pdw-card .desc{ font-size:12.5px; color:var(--text-dim); line-height:1.6; margin-top:10px; display:none; }
+.pdw-card.open .desc{ display:block; }
+
+/* ============================================================
+   TIMELINE
+   ============================================================ */
+.timeline{ position:relative; padding-left:34px; }
+.timeline::before{ content:''; position:absolute; left:9px; top:4px; bottom:4px; width:1px; background:var(--line-strong); }
+.tl-item{ position:relative; padding-bottom:38px; }
+.tl-item:last-child{ padding-bottom:0; }
+.tl-dot{ position:absolute; left:-34px; top:2px; width:19px; height:19px; border-radius:50%; border:1px solid var(--hi); background:var(--bg); display:grid; place-items:center; font-family:var(--font-mono); font-size:9px; color:var(--hi); }
+.tl-num{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); letter-spacing:0.1em; }
+.tl-title{ font-family:var(--font-ui); font-size:17px; font-weight:600; margin:4px 0 6px; }
+.tl-desc{ font-size:13.5px; color:var(--text-dim); line-height:1.65; max-width:560px; }
+
+.h-timeline{ display:grid; grid-template-columns:repeat(6,1fr); gap:2px; }
+.h-timeline .step{ padding:16px 10px; border-top:1px solid var(--line-strong); position:relative; }
+.h-timeline .step::before{ content:''; position:absolute; top:-1px; left:0; width:0; height:1px; background:var(--hi); transition:width .4s ease; }
+.h-timeline .step:hover::before{ width:100%; }
+.h-timeline .step .n{ font-family:var(--font-mono); font-size:11px; color:var(--hi); }
+.h-timeline .step .t{ font-family:var(--font-ui); font-size:13px; margin-top:6px; }
+
+/* ============================================================
+   SIMULATION PAGE
+   ============================================================ */
+.sim-shell{ display:grid; grid-template-columns:270px 1fr; gap:20px; align-items:start; }
+.sim-sidebar{ position:sticky; top:calc(var(--nav-h) + 16px); display:flex; flex-direction:column; gap:16px; }
+.field{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.field label{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:0.09em; color:var(--text-faint); }
+select.techselect{
+  appearance:none; background:rgba(0,7,45,0.6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6' fill='%23A6E1FA'/%3E%3C/svg%3E") no-repeat right 12px center;
+  border:1px solid var(--line-strong); color:var(--text); font-family:var(--font-mono); font-size:12.5px;
+  padding:10px 30px 10px 12px; border-radius:var(--radius); width:100%;
+}
+select.techselect:focus-visible, input:focus-visible, .pdw-card:focus-visible, button:focus-visible, a:focus-visible{ outline:2px solid var(--hi); outline-offset:2px; }
+input[type=range]{ width:100%; accent-color:var(--hi); }
+.range-row{ display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-size:11px; color:var(--text-dim); }
+.count-stepper{ display:flex; align-items:center; gap:10px; }
+.count-stepper button{ width:30px; height:30px; border:1px solid var(--line-strong); background:transparent; color:var(--hi); border-radius:var(--radius); cursor:pointer; font-size:15px; }
+.count-stepper button:hover{ border-color:var(--hi); }
+.count-stepper .val{ font-family:var(--font-mono); font-size:15px; width:20px; text-align:center; }
+.sim-buttons{ display:flex; flex-direction:column; gap:10px; }
+.sim-status{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); border-top:1px solid var(--line); padding-top:12px; margin-top:4px; }
+.sim-status .mode{ color:var(--hi); }
+
+.sim-main{ display:flex; flex-direction:column; gap:18px; }
+.panel-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
+.panel-title h3{ font-size:14px; letter-spacing:0.02em; }
+.panel-title .tag{ font-family:var(--font-mono); font-size:10px; color:var(--text-faint); border:1px solid var(--line); padding:3px 8px; border-radius:var(--radius); }
+
+.axis-label{ font-family:var(--font-mono); font-size:10px; color:var(--text-faint); letter-spacing:0.08em; }
+
+.proc-steps{ display:flex; flex-direction:column; gap:10px; font-family:var(--font-mono); font-size:12.5px; }
+.proc-step{ display:flex; align-items:center; gap:10px; color:var(--text-faint); opacity:0.4; transition:opacity .3s ease, color .3s ease; }
+.proc-step.active{ opacity:1; color:var(--text); }
+.proc-step.done{ opacity:1; color:var(--hi); }
+.proc-mark{ width:16px; text-align:center; }
+
+.metrics-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.metric{ text-align:left; }
+.metric .num{ font-family:var(--font-mono); font-size:26px; color:var(--hi); font-weight:600; }
+.metric .lbl{ font-family:var(--font-mono); font-size:10px; color:var(--text-faint); letter-spacing:0.08em; margin-top:6px; }
+
+.ba-slider-wrap{ position:relative; }
+.ba-slider-wrap .caption-row{ display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:10.5px; color:var(--text-faint); letter-spacing:0.1em; margin-bottom:10px; }
+.ba-slider-wrap input[type=range]{ width:100%; margin-top:14px; }
+
+.emitter-legend{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+.legend-item{ display:flex; align-items:center; gap:7px; font-family:var(--font-mono); font-size:11px; color:var(--text-dim); cursor:pointer; padding:4px 8px; border-radius:var(--radius); border:1px solid transparent; }
+.legend-item.selected{ border-color:var(--line-strong); background:rgba(166,225,250,0.06); }
+.legend-swatch{ width:9px; height:9px; border-radius:2px; }
+
+.charts-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+
+/* ============================================================
+   SIGNAL INTELLIGENCE CONSOLE — visualization engine chrome
+   ============================================================ */
+.hud-bar{ display:flex; align-items:center; gap:10px; padding:14px 20px; flex-wrap:wrap; }
+.hud-stage{ display:flex; align-items:center; gap:9px; font-family:var(--font-mono); font-size:11px; letter-spacing:0.08em; color:var(--text-faint); transition:color .3s ease; }
+.hud-stage .hud-dot{ width:7px; height:7px; border-radius:50%; background:var(--text-faint); transition:all .3s ease; flex:none; }
+.hud-stage.live{ color:var(--hi); }
+.hud-stage.live .hud-dot{ background:var(--hi); box-shadow:0 0 8px var(--hi); animation:blink 1.4s ease-in-out infinite; }
+.hud-stage.done{ color:var(--em3); }
+.hud-stage.done .hud-dot{ background:var(--em3); box-shadow:0 0 6px var(--em3); animation:none; }
+.hud-sep{ flex:1; height:1px; background:var(--line); margin:0 2px; min-width:10px; }
+
+.viz-tabs{ display:flex; gap:2px; flex-wrap:wrap; border:1px solid var(--line); border-radius:var(--radius); padding:4px; background:rgba(0,7,45,0.4); }
+.viz-tab{ flex:1; min-width:104px; background:transparent; border:none; cursor:pointer; color:var(--text-faint); font-family:var(--font-mono); font-size:10.5px; letter-spacing:0.07em; padding:10px 8px; border-radius:2px; transition:all .2s ease; }
+.viz-tab:hover{ color:var(--text-dim); }
+.viz-tab.active{ background:linear-gradient(180deg, rgba(166,225,250,0.14), rgba(166,225,250,0.04)); color:var(--hi); box-shadow:inset 0 0 0 1px var(--line-strong); }
+
+.viz-workspace{ padding:0; overflow:hidden; }
+.viz-panel{ display:none; padding:18px; }
+.viz-panel.active{ display:block; animation:pageIn .35s ease both; }
+
+.viz-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
+.viz-toolbar .grp{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.axis-select{ appearance:none; background:rgba(0,7,45,0.6); border:1px solid var(--line-strong); color:var(--hi); font-family:var(--font-mono); font-size:11px; padding:6px 10px; border-radius:2px; }
+.zoom-controls{ display:flex; gap:4px; }
+.zoom-controls button{ min-width:28px; height:28px; padding:0 8px; border:1px solid var(--line-strong); background:transparent; color:var(--text-dim); border-radius:2px; cursor:pointer; font-family:var(--font-mono); font-size:11px; }
+.zoom-controls button:hover{ color:var(--hi); border-color:var(--hi); }
+
+.canvas-frame{ position:relative; width:100%; border:1px solid var(--line); border-radius:2px; background:radial-gradient(1200px 400px at 50% -20%, rgba(14,107,168,0.14), transparent 60%), rgba(0,7,45,0.5); overflow:hidden; touch-action:none; }
+.canvas-frame canvas{ display:block; width:100%; height:100%; cursor:crosshair; }
+.canvas-frame .cf-caption{ position:absolute; top:8px; left:10px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.1em; color:var(--text-faint); pointer-events:none; }
+.canvas-frame .cf-caption.right{ left:auto; right:10px; }
+.canvas-tooltip{ position:absolute; pointer-events:none; z-index:5; background:rgba(0,12,60,0.94); border:1px solid var(--line-strong); border-radius:2px; padding:8px 10px; font-family:var(--font-mono); font-size:10.5px; color:var(--text); line-height:1.7; white-space:nowrap; opacity:0; transform:translate(-50%,-112%); transition:opacity .12s ease; box-shadow:0 8px 24px rgba(0,0,0,0.45); }
+.canvas-tooltip.show{ opacity:1; }
+.canvas-tooltip b{ color:var(--hi); }
+
+.h-time{ height:230px; } .h-feature{ height:420px; } .h-freq{ height:250px; } .h-pri{ height:250px; }
+.h-waterfall{ height:340px; } .h-emitters{ height:320px; } .h-overview{ height:400px; }
+
+.overview-grid{ display:grid; grid-template-columns:210px 1fr 210px; gap:16px; align-items:stretch; }
+.overview-pipeline{ display:flex; flex-direction:column; gap:0; }
+.overview-telemetry{ display:flex; flex-direction:column; gap:10px; }
+.tele-item{ border:1px solid var(--line); border-radius:2px; padding:10px 12px; }
+.tele-item .k{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em; color:var(--text-faint); }
+.tele-item .v{ font-family:var(--font-mono); font-size:16px; color:var(--hi); margin-top:4px; }
+
+.freq-agility, .pri-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:12px; }
+.agility-box{ border:1px solid var(--line); border-radius:2px; padding:12px 14px; }
+.agility-box .k{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.08em; color:var(--text-faint); }
+.agility-box .v{ font-family:var(--font-mono); font-size:15px; color:var(--text); margin-top:4px; }
+.agility-box.hi .v{ color:var(--hi); }
+
+.waterfall-controls{ display:flex; gap:8px; margin-bottom:12px; }
+.wf-btn{ padding:7px 14px; border:1px solid var(--line-strong); background:transparent; color:var(--text-dim); font-family:var(--font-mono); font-size:10.5px; border-radius:2px; cursor:pointer; letter-spacing:0.05em; }
+.wf-btn.on{ color:var(--hi); border-color:var(--hi); box-shadow:0 0 10px rgba(166,225,250,0.15); }
+
+.emitter-panel-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--line); }
+.emitter-panel-head:first-child{ border-top:none; padding-top:0; }
+.emitter-panel-head .name{ font-family:var(--font-ui); font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.emitter-panel-head .swatch{ width:9px; height:9px; border-radius:2px; flex:none; }
+.emitter-panel-head .stat{ font-family:var(--font-mono); font-size:9.5px; color:var(--text-faint); display:flex; gap:14px; flex-wrap:wrap; }
+
+.pulse-inspector{ position:fixed; z-index:120; width:230px; border:1px solid var(--line-strong); border-radius:2px; background:rgba(0,10,50,0.96); backdrop-filter:blur(10px); padding:16px; box-shadow:0 16px 40px rgba(0,0,0,0.5); font-family:var(--font-mono); font-size:11.5px; opacity:0; pointer-events:none; transform:translateY(8px); transition:opacity .18s ease, transform .18s ease; }
+.pulse-inspector.show{ opacity:1; pointer-events:auto; transform:translateY(0); }
+.pulse-inspector .pi-head{ display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:10px; }
+.pulse-inspector .pi-title{ color:var(--hi); letter-spacing:0.08em; font-size:10.5px; }
+.pulse-inspector .pi-close{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:14px; padding:0; }
+.pulse-inspector .pi-row{ display:flex; justify-content:space-between; margin-bottom:7px; color:var(--text-dim); gap:10px; }
+.pulse-inspector .pi-row b{ color:var(--text); font-weight:500; }
+.pulse-inspector .pi-note{ margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:9.5px; color:var(--text-faint); line-height:1.6; }
+
+.telemetry-strip{ display:grid; grid-template-columns:repeat(6,1fr); gap:14px; }
+.telemetry-strip .metric .num{ font-size:19px; }
+
+/* JUDGE MODE */
+.sim-shell.judge-mode{ grid-template-columns:1fr; }
+.sim-shell.judge-mode .sim-sidebar{ display:none; }
+.sim-shell.judge-mode .h-overview,.sim-shell.judge-mode .h-time,.sim-shell.judge-mode .h-feature,
+.sim-shell.judge-mode .h-freq,.sim-shell.judge-mode .h-pri,.sim-shell.judge-mode .h-waterfall,.sim-shell.judge-mode .h-emitters{ height:min(62vh,560px); }
+.sim-shell.judge-mode .telemetry-strip{ grid-template-columns:repeat(3,1fr); }
+.judge-caption{ display:none; text-align:center; font-family:var(--font-mono); font-size:13px; color:var(--hi); letter-spacing:0.08em; padding:14px 0 2px; }
+.sim-shell.judge-mode .judge-caption{ display:block; }
+
+@media (max-width:1080px){
+  .overview-grid{ grid-template-columns:1fr; }
+  .telemetry-strip{ grid-template-columns:repeat(3,1fr); }
+}
+@media (max-width:640px){
+  .telemetry-strip{ grid-template-columns:repeat(2,1fr); }
+  .freq-agility, .pri-stats{ grid-template-columns:1fr 1fr; }
+  .viz-tab{ min-width:84px; font-size:9.5px; }
+  .h-feature{ height:320px; }
+  .pulse-inspector{ width:198px; }
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer{ border-top:1px solid var(--line); padding:56px 0 30px; position:relative; z-index:1; }
+.footer-grid{ display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:36px; margin-bottom:40px; }
+.footer-brand{ font-family:var(--font-ui); font-weight:600; font-size:14px; letter-spacing:0.04em; margin-bottom:10px; }
+.footer-sih{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); }
+.footer-col h4{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:0.1em; color:var(--text-faint); margin-bottom:14px; }
+.footer-col a{ display:block; font-size:13px; color:var(--text-dim); text-decoration:none; margin-bottom:10px; transition:color .2s; }
+.footer-col a:hover{ color:var(--hi); }
+.footer-bottom{ display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); border-top:1px solid var(--line); padding-top:22px; flex-wrap:wrap; gap:10px; }
+
+/* ============================================================
+   TEAM / ABOUT
+   ============================================================ */
+.team-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.team-card{ text-align:left; }
+.avatar{
+  width:52px; height:52px; border-radius:50%; border:1px solid var(--line-strong);
+  display:grid; place-items:center; font-family:var(--font-mono); color:var(--hi); font-size:14px; margin-bottom:16px;
+  background:radial-gradient(circle at 40% 30%, rgba(166,225,250,0.16), transparent 70%);
+}
+.team-name{ font-family:var(--font-ui); font-size:15px; font-weight:600; }
+.team-role{ font-family:var(--font-mono); font-size:11px; color:var(--hi); margin-top:4px; }
+.team-links{ display:flex; gap:14px; margin-top:14px; }
+.team-links a{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); text-decoration:none; }
+.team-links a:hover{ color:var(--hi); }
+
+/* toast */
+#toast{
+  position:fixed; bottom:26px; left:50%; transform:translate(-50%,20px); z-index:200;
+  background:var(--panel-2); border:1px solid var(--line-strong); color:var(--text);
+  font-family:var(--font-mono); font-size:12px; padding:12px 18px; border-radius:var(--radius);
+  opacity:0; pointer-events:none; transition:all .3s ease; box-shadow:0 10px 30px rgba(0,0,0,0.4);
+}
+#toast.show{ opacity:1; transform:translate(-50%,0); }
+
+/* ============================================================
+   LOADING SCREEN
+   ============================================================ */
+#loader{
+  position:fixed; inset:0; z-index:500; background:var(--bg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+  transition:opacity .5s ease, visibility .5s ease;
+}
+#loader.hide{ opacity:0; visibility:hidden; }
+.loader-ring{ position:relative; width:88px; height:88px; }
+.loader-ring svg{ width:100%; height:100%; }
+.loader-text{ font-family:var(--font-mono); font-size:11.5px; color:var(--hi); letter-spacing:0.12em; min-height:16px; }
+
+/* ============================================================
+   MISC UTILITIES
+   ============================================================ */
+.center{ text-align:center; }
+.mt-8{ margin-top:8px; }
+.mt-16{ margin-top:16px; }
+.mt-24{ margin-top:24px; }
+.mt-40{ margin-top:40px; }
+.flex-between{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.two-col{ display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start; }
+.small-note{ font-family:var(--font-mono); font-size:11px; color:var(--text-faint); line-height:1.6; }
+.big-cta{ text-align:center; padding:110px 0; }
+.big-cta h2{ font-size:clamp(28px,4.4vw,48px); font-weight:700; max-width:760px; margin:0 auto 30px; line-height:1.15; }
+
+.reveal{ opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease; }
+.reveal.in{ opacity:1; transform:translateY(0); }
+
+.dataset-card{ display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+.dataset-card .meta{ font-family:var(--font-mono); font-size:12.5px; color:var(--text-dim); line-height:1.8; }
+.dataset-card .meta b{ color:var(--text); font-weight:600; }
+
+.arch-diagram{ display:flex; flex-direction:column; align-items:center; gap:0; }
+.arch-node{ border:1px solid var(--line-strong); padding:14px 26px; border-radius:var(--radius); background:rgba(10,36,114,0.3); font-family:var(--font-mono); font-size:12.5px; letter-spacing:0.05em; text-align:center; min-width:240px; }
+.arch-arrow{ font-family:var(--font-mono); color:var(--text-faint); padding:6px 0; }
+
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; scroll-behavior:auto !important; }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width:1080px){
+  .grid-5{ grid-template-columns:repeat(3,1fr); }
+  .footer-grid{ grid-template-columns:1fr 1fr; }
+  .team-grid{ grid-template-columns:repeat(2,1fr); }
+  .pdw-cards{ grid-template-columns:repeat(3,1fr); }
+}
+@media (max-width:900px){
+  nav.primary{ display:none; }
+  .hero-grid{ grid-template-columns:1fr; }
+  .sim-shell{ grid-template-columns:1fr; }
+  .sim-sidebar{ position:static; }
+  .two-col{ grid-template-columns:1fr; }
+  .charts-grid{ grid-template-columns:1fr; }
+  .grid-4{ grid-template-columns:repeat(2,1fr); }
+  .grid-3{ grid-template-columns:repeat(2,1fr); }
+  .metrics-row{ grid-template-columns:repeat(2,1fr); }
+}
+@media (max-width:640px){
+  .wrap{ padding:0 18px; }
+  section{ padding:64px 0; }
+  .grid-5,.grid-4,.grid-3,.grid-2{ grid-template-columns:1fr; }
+  .pdw-cards{ grid-template-columns:repeat(2,1fr); }
+  .footer-grid{ grid-template-columns:1fr; }
+  .team-grid{ grid-template-columns:1fr; }
+  .footer-bottom{ flex-direction:column; align-items:flex-start; }
+  .dataset-card{ flex-direction:column; align-items:flex-start; }
+}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="loader-ring">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(166,225,250,0.15)" stroke-width="1"/>
+      <circle cx="50" cy="50" r="32" fill="none" stroke="rgba(166,225,250,0.15)" stroke-width="1"/>
+      <circle cx="50" cy="50" r="44" fill="none" stroke="#A6E1FA" stroke-width="1.4" stroke-dasharray="20 260" stroke-linecap="round">
+        <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="1.4s" repeatCount="indefinite"/>
+      </circle>
+      <line x1="50" y1="50" x2="50" y2="8" stroke="#A6E1FA" stroke-width="1">
+        <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="2.2s" repeatCount="indefinite"/>
+      </line>
+    </svg>
+  </div>
+  <div class="loader-text mono" id="loaderText">RADAR GRID</div>
+</div>
+
+<div class="bg-layer"></div>
+<div class="bg-grid"></div>
+
+<div class="statusbar">
+  <div class="statusbar-inner">
+    <span><span class="dot pulse"></span>SIH PS 26055 · SMART DEINTERLEAVING SCHEDULER</span>
+    <span id="clockOut">SYSTEM TIME —</span>
+  </div>
+</div>
+
+<header class="nav" id="siteNav">
+  <div class="nav-inner">
+    <button class="brand" data-nav="/" aria-label="Home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">SMART<br><span>DEINTERLEAVING SCHEDULER</span></span>
+    </button>
+    <nav class="primary" aria-label="Primary">
+      <a href="#/" data-route="/">HOME</a>
+      <a href="#/simulation" data-route="/simulation">SIMULATION</a>
+      <a href="#/understanding" data-route="/understanding">UNDERSTANDING</a>
+      <a href="#/journey" data-route="/journey">JOURNEY</a>
+      <a href="#/about" data-route="/about">ABOUT US</a>
+    </nav>
+    <div class="nav-right">
+      <span class="nav-ps mono"><span class="dot"></span>PS 26055</span>
+      <a class="icon-btn" id="githubIcon" href="#" target="_blank" rel="noopener" aria-label="Open GitHub repository" title="GitHub repository">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.9c-2.78.62-3.37-1.37-3.37-1.37-.46-1.2-1.11-1.52-1.11-1.52-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.34 1.12 2.91.86.09-.66.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.32.1-2.75 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 5 0c1.9-1.33 2.75-1.05 2.75-1.05.55 1.43.2 2.49.1 2.75.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.03 10.03 0 0 0 22 12.25C22 6.58 17.52 2 12 2z"/></svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer>
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">SMART DEINTERLEAVING SCHEDULER</div>
+        <div class="footer-sih mono">SIH PROBLEM STATEMENT 26055</div>
+        <p class="small-note mt-16" style="max-width:320px;">An interactive research prototype exploring pulse deinterleaving in dense, frequency‑agile electromagnetic environments.</p>
+      </div>
+      <div class="footer-col">
+        <h4>NAVIGATION</h4>
+        <a href="#/">Home</a>
+        <a href="#/simulation">Simulation</a>
+        <a href="#/understanding">Understanding</a>
+        <a href="#/journey">Journey</a>
+        <a href="#/about">About Us</a>
+      </div>
+      <div class="footer-col">
+        <h4>RESOURCES</h4>
+        <a href="#" class="ext-link" data-kind="github">GitHub</a>
+        <a href="#" class="ext-link" data-kind="dataset">Dataset</a>
+        <a href="#" class="ext-link" data-kind="report">Report</a>
+      </div>
+      <div class="footer-col">
+        <h4>TEAM</h4>
+        <a href="#/about" id="footerTeamName">Team name pending</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Smart Deinterleaving Scheduler</span>
+      <span>Prototype build · Demonstration data where indicated</span>
+    </div>
+  </div>
+</footer>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIGURATION — fill in real project details here
+   ============================================================ */
+const CONFIG = {
+  teamName: null,               // e.g. "Team Nightingale" — null shows a pending placeholder
+  githubUrl: null,              // repository URL
+  reportUrl: null,              // project report URL
+  datasetUrl: null,             // official dataset URL
+  datasetName: "JC Wise, Radar Emitter Database, 2024",
+  datasetOrg: "Alan Turing Institute — Turing's Defence and Security programme",
+};
+
+function resolveLink(kind){
+  const map = { github: CONFIG.githubUrl, dataset: CONFIG.datasetUrl, report: CONFIG.reportUrl };
+  return map[kind] || null;
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+document.addEventListener('click', (e)=>{
+  const el = e.target.closest('.ext-link, #githubIcon');
+  if(!el) return;
+  const kind = el.dataset.kind || 'github';
+  const url = resolveLink(kind);
+  if(!url){
+    e.preventDefault();
+    showToast('Link not yet provided — add CONFIG.' + kind + 'Url at the top of the script.');
+  }
+});
+(function initLinks(){
+  document.querySelectorAll('.ext-link, #githubIcon').forEach(el=>{
+    const kind = el.dataset.kind || 'github';
+    const url = resolveLink(kind);
+    if(url) el.href = url;
+  });
+  const teamEl = document.getElementById('footerTeamName');
+  if(CONFIG.teamName) teamEl.textContent = CONFIG.teamName;
+})();
+
+/* ============================================================
+   LOADER SEQUENCE
+   ============================================================ */
+(function loaderSeq(){
+  const seq = ['RADAR GRID','SYSTEM INITIALIZATION','SIGNAL CHANNELS ONLINE','SYSTEM READY'];
+  let i = 0;
+  const el = document.getElementById('loaderText');
+  const iv = setInterval(()=>{
+    i++;
+    if(i < seq.length){ el.textContent = seq[i]; }
+    else{
+      clearInterval(iv);
+      document.getElementById('loader').classList.add('hide');
+    }
+  }, 420);
+})();
+
+/* ============================================================
+   CLOCK
+   ============================================================ */
+function tickClock(){
+  const d = new Date();
+  document.getElementById('clockOut').textContent =
+    'SYSTEM TIME ' + d.toTimeString().slice(0,8) + ' UTC' + (-d.getTimezoneOffset()/60 >= 0 ? '+' : '') + (-d.getTimezoneOffset()/60);
+}
+tickClock(); setInterval(tickClock, 1000);
+
+/* ============================================================
+   NAV SCROLL STATE
+   ============================================================ */
+const navEl = document.getElementById('siteNav');
+window.addEventListener('scroll', ()=>{
+  navEl.classList.toggle('scrolled', window.scrollY > 20);
+}, { passive:true });
+document.querySelector('.brand').addEventListener('click', ()=>{ location.hash = '#/'; });
+
+/* ============================================================
+   SVG HELPERS
+   ============================================================ */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs){
+  const el = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+/* ============================================================
+   PULSE TRAIN RENDER (mini emitter timelines used across pages)
+   pattern: array of x-positions 0..1
+   ============================================================ */
+function renderPulseTrack(container, pattern, color){
+  const w = 600, h = 34;
+  const svg = svgEl('svg', { viewBox: `0 0 ${w} ${h}`, width:'100%', height:'100%', preserveAspectRatio:'none' });
+  svg.appendChild(svgEl('line', { x1:0, y1:h/2, x2:w, y2:h/2, stroke:'rgba(166,225,250,0.14)', 'stroke-width':1 }));
+  pattern.forEach(p=>{
+    const x = p*w;
+    const line = svgEl('line', { x1:x, y1:6, x2:x, y2:h-6, stroke:color, 'stroke-width':2, opacity:0.9 });
+    svg.appendChild(line);
+    const dot = svgEl('circle', { cx:x, cy:h/2, r:2.6, fill:color });
+    svg.appendChild(dot);
+  });
+  container.innerHTML = '';
+  container.appendChild(svg);
+}
+
+function seededPattern(n, seed, jitter){
+  // returns n increasing x positions in [0.03,0.97]
+  let s = seed;
+  const rnd = ()=>{ s = (s*9301+49297)%233280; return s/233280; };
+  const arr = [];
+  let x = 0.04 + rnd()*0.03;
+  const step = 0.9/n;
+  for(let i=0;i<n;i++){
+    arr.push(Math.min(0.97, x));
+    x += step*(1 + (rnd()-0.5)*jitter);
+  }
+  return arr;
+}
+
+function mergeSorted(tracks){
+  const all = [];
+  tracks.forEach((t,idx)=> t.forEach(x=> all.push({x, e:idx})));
+  all.sort((a,b)=>a.x-b.x);
+  return all;
+}
+
+/* ============================================================
+   ROUTER
+   ============================================================ */
+const routes = {};
+function registerRoute(path, renderFn){ routes[path] = renderFn; }
+function currentPath(){
+  const h = location.hash.replace(/^#/, '') || '/';
+  return routes[h] ? h : '/';
+}
+function renderRoute(){
+  const path = currentPath();
+  document.querySelectorAll('main .page').forEach(p=>p.classList.remove('active'));
+  let page = document.getElementById('page' + path.replace(/\//g,'_'));
+  if(!page){
+    page = document.createElement('div');
+    page.className = 'page';
+    page.id = 'page' + path.replace(/\//g,'_');
+    page.innerHTML = routes[path]();
+    document.getElementById('app').appendChild(page);
+  }
+  page.classList.add('active');
+  document.querySelectorAll('nav.primary a').forEach(a=>{
+    a.classList.toggle('active', a.dataset.route === path);
+  });
+  window.scrollTo({ top:0, behavior:'auto' });
+  requestAnimationFrame(initPageBehaviors);
+}
+window.addEventListener('hashchange', renderRoute);
+
+/* Reveal-on-scroll (used sparingly per page, single orchestrated reveals) */
+function setupReveal(){
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  }, { threshold:0.15 });
+  document.querySelectorAll('.page.active .reveal').forEach(el=> io.observe(el));
+}
+
+/* ============================================================
+   PAGE: HOME
+   ============================================================ */
+registerRoute('/', function(){
+  return `
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="eyebrow">SMART INDIA HACKATHON · PS 26055</div>
+        <h1>SMART<br>DEINTERLEAVING<br>SCHEDULER</h1>
+        <div class="hero-sub">From interleaved radar pulses to structured emitter intelligence.</div>
+        <p class="hero-desc">An intelligent signal-processing prototype focused on separating interleaved radar pulse streams in complex electromagnetic environments.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#/simulation">LAUNCH SIMULATION <span class="arrow">→</span></a>
+          <a class="btn btn-ghost" href="#understand-anchor">UNDERSTAND THE PROBLEM <span class="arrow">↓</span></a>
+        </div>
+        <div class="link-row">
+          <a href="#" class="ext-link" data-kind="github">GitHub</a>
+          <a href="#" class="ext-link" data-kind="dataset">Dataset</a>
+          <a href="#" class="ext-link" data-kind="report">Report</a>
+        </div>
+      </div>
+      <div>
+        <div class="radar-box" id="heroRadar"></div>
+        <div class="radar-caption">CONCEPTUAL SIGNAL VISUALIZATION</div>
+      </div>
+    </div>
+
+    <div class="wrap sys-panel">
+      <div class="grid grid-5">
+        <div class="panel"><span class="panel-tag">INPUT</span><span class="panel-value">Interleaved PDWs</span></div>
+        <div class="panel"><span class="panel-tag">SIGNAL CONDITIONS</span><span class="panel-value">Frequency Agile</span></div>
+        <div class="panel"><span class="panel-tag">PROCESS</span><span class="panel-value">Smart Deinterleaving</span></div>
+        <div class="panel"><span class="panel-tag">OUTPUT</span><span class="panel-value">Emitter-wise Streams</span></div>
+        <div class="panel"><span class="panel-tag">STATUS</span><span class="panel-value mono"><span class="dot"></span>PROTOTYPE</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="understand-anchor">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">THE CHALLENGE</div>
+        <h2 class="h-section">When multiple radar emitters speak at once, the receiver sees a mixed conversation.</h2>
+        <p class="lede">A receiver operating in a dense electromagnetic environment observes pulses from several emitters at once. Rather than arriving as separate, labelled streams, these pulses interleave into a single sequence — and the task of pulse deinterleaving is to recover the individual emitter streams from that mixture.</p>
+      </div>
+
+      <div class="flow-diagram">
+        <div>
+          <div class="emitter-row"><span class="emitter-label mono">EMITTER A</span><div class="emitter-track" data-track="0"></div></div>
+          <div class="emitter-row"><span class="emitter-label mono">EMITTER B</span><div class="emitter-track" data-track="1"></div></div>
+          <div class="emitter-row"><span class="emitter-label mono">EMITTER C</span><div class="emitter-track" data-track="2"></div></div>
+        </div>
+        <div class="flow-arrow center">→</div>
+        <div>
+          <div class="emitter-label mono" style="width:auto;margin-bottom:10px;">INTERLEAVED STREAM</div>
+          <div class="emitter-track" data-track="mixed" style="height:44px;"></div>
+        </div>
+      </div>
+
+      <div class="subpanel mt-40">
+        <div class="panel-tag">WHY IS IT HARD?</div>
+        <div class="grid grid-3 mt-16">
+          <div class="mono" style="font-size:13px;color:var(--text-dim);">— Multiple simultaneous emitters</div>
+          <div class="mono" style="font-size:13px;color:var(--text-dim);">— Similar timing characteristics</div>
+          <div class="mono" style="font-size:13px;color:var(--text-dim);">— Frequency hopping behaviour</div>
+          <div class="mono" style="font-size:13px;color:var(--text-dim);">— Staggered / randomised PRI</div>
+          <div class="mono" style="font-size:13px;color:var(--text-dim);">— Dense electromagnetic environments</div>
+          <div class="mono" style="font-size:13px;color:var(--text-dim);">— Multiple overlapping pulse parameters</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">WHY FREQUENCY AGILITY MATTERS</div>
+        <h2 class="h-section">Modern radar can vary frequency and timing pulse-to-pulse.</h2>
+        <p class="lede">Frequency-agile behaviour can improve a radar's operational characteristics — including resistance to jamming and reduced predictability to intercept receivers. It also raises the technical bar for any system attempting to separate and identify individual emitters from a received pulse stream.</p>
+      </div>
+      <div class="two-col">
+        <div class="subpanel">
+          <div class="panel-tag">FREQUENCY HOPPING</div>
+          <p class="small-note mt-8">The carrier frequency changes from pulse to pulse.</p>
+          <div id="freqHopViz" class="mt-24"></div>
+        </div>
+        <div class="subpanel">
+          <div class="panel-tag">STAGGERED / RANDOM PRI</div>
+          <p class="small-note mt-8">The interval between pulses varies rather than staying fixed.</p>
+          <div id="priViz" class="mt-24"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">FROM SIGNALS TO INTELLIGENCE</div>
+        <h2 class="h-section">Deinterleaving is one link in a longer ESM / ELINT analysis chain.</h2>
+        <p class="lede">Problems of this nature are relevant to defence organizations and electronic-warfare environments, including research and operational contexts associated with organizations such as DRDO.</p>
+      </div>
+      <div class="arch-diagram">
+        <div class="arch-node">RADAR EMISSIONS</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">RECEIVED PULSES</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PULSE DESCRIPTOR WORDS (PDWs)</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">DEINTERLEAVING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">EMITTER STREAMS</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">FURTHER ANALYSIS</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">OUR SOLUTION</div>
+        <h2 class="h-section">Organizing pulse-level information into meaningful emitter streams.</h2>
+      </div>
+      <div class="arch-diagram">
+        <div class="arch-node">DATA</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PDW ANALYSIS</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PULSE RELATIONSHIP ANALYSIS</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">DEINTERLEAVING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">EMITTER STREAMS</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">SCHEDULING / ANALYSIS</div>
+      </div>
+      <p class="small-note center mt-24">Implementation-specific methodology (clustering approach, model, or optimisation technique) to be detailed once finalised.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">SEE THE SYSTEM IN ACTION</div>
+        <h2 class="h-section">Watch interleaved pulses resolve into separated emitter streams.</h2>
+      </div>
+      <div class="subpanel">
+        <div class="emitter-row"><span class="emitter-label mono">MIXED</span><div class="emitter-track" data-track="mixed2"></div></div>
+        <div class="flow-arrow center" style="text-align:center;margin:14px 0;">↓ SMART DEINTERLEAVING ↓</div>
+        <div class="emitter-row"><span class="emitter-label mono">EMITTER 01</span><div class="emitter-track" data-track="0" data-color="var(--em1)"></div></div>
+        <div class="emitter-row"><span class="emitter-label mono">EMITTER 02</span><div class="emitter-track" data-track="1" data-color="var(--em2)"></div></div>
+        <div class="emitter-row"><span class="emitter-label mono">EMITTER 03</span><div class="emitter-track" data-track="2" data-color="var(--em3)"></div></div>
+        <div class="center mt-24"><a class="btn btn-primary" href="#/simulation">LAUNCH FULL SIMULATION <span class="arrow">→</span></a></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">TECHNICAL SNAPSHOT</div>
+        <h2 class="h-section">Pulse Descriptor Words: the raw material of deinterleaving.</h2>
+      </div>
+      <div class="grid grid-5">
+        <div class="panel"><span class="panel-tag">TOA</span><span class="panel-value">Time of Arrival</span></div>
+        <div class="panel"><span class="panel-tag">PRI</span><span class="panel-value">Pulse Repetition Interval</span></div>
+        <div class="panel"><span class="panel-tag">AOA</span><span class="panel-value">Angle of Arrival</span></div>
+        <div class="panel"><span class="panel-tag">PW</span><span class="panel-value">Pulse Width</span></div>
+        <div class="panel"><span class="panel-tag">RF</span><span class="panel-value">Radio Frequency</span></div>
+      </div>
+      <div class="center mt-24"><a class="btn btn-ghost" href="#/understanding">EXPLORE PDWs <span class="arrow">→</span></a></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap two-col">
+      <div class="subpanel">
+        <div class="panel-tag">DATASET</div>
+        <h3 class="mt-8" style="font-size:17px;">${CONFIG.datasetName}</h3>
+        <p class="small-note mt-8">${CONFIG.datasetOrg}</p>
+        <a class="btn btn-sm btn-ghost mt-24 ext-link" data-kind="dataset" href="#">VIEW DATASET ↗</a>
+      </div>
+      <div class="subpanel">
+        <div class="panel-tag">PROJECT REPORT</div>
+        <h3 class="mt-8" style="font-size:17px;">Methodology, design and experimentation</h3>
+        <p class="small-note mt-8">Explore our methodology, system design, experimentation and research.</p>
+        <a class="btn btn-sm btn-ghost mt-24 ext-link" data-kind="report" href="#">READ PROJECT REPORT ↗</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <div class="eyebrow">JOURNEY</div>
+        <h2 class="h-section">From problem to prototype.</h2>
+      </div>
+      <div class="h-timeline">
+        <div class="step"><div class="n mono">01</div><div class="t">Problem</div></div>
+        <div class="step"><div class="n mono">02</div><div class="t">Signal Study</div></div>
+        <div class="step"><div class="n mono">03</div><div class="t">Data</div></div>
+        <div class="step"><div class="n mono">04</div><div class="t">System Design</div></div>
+        <div class="step"><div class="n mono">05</div><div class="t">Simulation</div></div>
+        <div class="step"><div class="n mono">06</div><div class="t">Future Work</div></div>
+      </div>
+      <div class="center mt-40"><a class="btn btn-ghost" href="#/journey">EXPLORE OUR JOURNEY <span class="arrow">→</span></a></div>
+    </div>
+  </section>
+
+  <section class="big-cta">
+    <div class="wrap">
+      <h2>READY TO SEE THE SIGNALS SEPARATE?</h2>
+      <a class="btn btn-primary" href="#/simulation">LAUNCH SIMULATION <span class="arrow">→</span></a>
+      <p class="small-note mt-24">Smart Deinterleaving Scheduler · SIH Problem Statement 26055</p>
+    </div>
+  </section>
+  `;
+});
+
+/* ============================================================
+   PAGE: SIMULATION
+   ============================================================ */
+registerRoute('/simulation', function(){
+  return `
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">INTERACTIVE SIGNAL ENVIRONMENT</div>
+      <h2 class="h-section">A research console for pulse deinterleaving.</h2>
+      <p class="lede">Generate a synthetic interleaved pulse stream, then run the demonstration pipeline to watch structure emerge across time, frequency and feature space. All pulse values shown are synthetic / illustrative unless otherwise noted.</p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="sim-shell" id="simShell">
+        <aside class="sim-sidebar" id="simSidebar">
+          <div class="panel">
+            <div class="field">
+              <label>DATA SOURCE</label>
+              <select class="techselect" id="simSource">
+                <option>Sample Dataset</option>
+                <option>Synthetic Generator</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>EMITTER COUNT</label>
+              <div class="count-stepper">
+                <button type="button" id="emMinus" aria-label="Decrease emitters">−</button>
+                <span class="val mono" id="emCount">3</span>
+                <button type="button" id="emPlus" aria-label="Increase emitters">+</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>SIGNAL MODE</label>
+              <select class="techselect" id="simMode">
+                <option value="agile">Frequency Agile</option>
+                <option value="fixed">Fixed Frequency</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>PRI MODE</label>
+              <select class="techselect" id="simPri">
+                <option value="stagger">Staggered</option>
+                <option value="jitter">Jittered</option>
+                <option value="fixed">Fixed</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>NOISE LEVEL</label>
+              <select class="techselect" id="simNoise">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>TIME WINDOW</label>
+              <div class="range-row">
+                <span>150μs</span>
+                <input type="range" id="simWindow" min="150" max="500" value="260" step="10" />
+                <span>500μs</span>
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label>SIMULATION SPEED</label>
+              <div class="range-row">
+                <span>SLOW</span>
+                <input type="range" id="simSpeed" min="1" max="3" value="2" step="1" />
+                <span>FAST</span>
+              </div>
+            </div>
+          </div>
+          <div class="panel sim-buttons">
+            <button class="btn btn-ghost" id="btnGenerate">GENERATE SIGNAL</button>
+            <button class="btn btn-primary" id="btnRun">RUN DEINTERLEAVING</button>
+            <button class="btn btn-ghost" id="btnPause">PAUSE</button>
+            <button class="btn btn-ghost" id="btnReset">RESET</button>
+            <button class="btn btn-ghost" id="btnReplay">REPLAY DEMO</button>
+            <button class="btn btn-ghost" id="btnJudge">JUDGE DEMO</button>
+            <div class="sim-status mono">
+              <span class="dot"></span><span class="mode">DEMONSTRATION VISUALIZATION</span><br>
+              Illustrates the signal-processing concept only. Production methodology is described in the project report.
+            </div>
+          </div>
+        </aside>
+
+        <div class="sim-main">
+          <div class="judge-caption mono" id="judgeCaption">JUDGE MODE — GUIDED DEMONSTRATION</div>
+
+          <div class="hud-bar panel">
+            <div class="hud-stage" data-hud="acq"><span class="hud-dot"></span>ACQUISITION</div>
+            <div class="hud-sep"></div>
+            <div class="hud-stage" data-hud="pdw"><span class="hud-dot"></span>PDW PARSED</div>
+            <div class="hud-sep"></div>
+            <div class="hud-stage" data-hud="ana"><span class="hud-dot"></span>ANALYSIS</div>
+            <div class="hud-sep"></div>
+            <div class="hud-stage" data-hud="out"><span class="hud-dot"></span>OUTPUT</div>
+            <button class="icon-btn" id="btnClearSel" title="Clear selection" aria-label="Clear selection" style="margin-left:14px;width:30px;height:30px;">✕</button>
+          </div>
+
+          <div class="viz-tabs" id="vizTabs">
+            <button class="viz-tab active" data-tab="overview">OVERVIEW</button>
+            <button class="viz-tab" data-tab="time">TIME DOMAIN</button>
+            <button class="viz-tab" data-tab="feature">FEATURE SPACE</button>
+            <button class="viz-tab" data-tab="freq">FREQUENCY</button>
+            <button class="viz-tab" data-tab="pri">PRI</button>
+            <button class="viz-tab" data-tab="waterfall">WATERFALL</button>
+            <button class="viz-tab" data-tab="emitters">EMITTER STREAMS</button>
+          </div>
+
+          <div class="viz-workspace panel" id="vizWorkspace">
+
+            <div class="viz-panel active" data-panel="overview">
+              <div class="panel-title"><h3>SIGNAL TRANSFORMATION — DEMONSTRATION VISUALIZATION</h3><span class="tag" id="overviewTag">AWAITING SIGNAL</span></div>
+              <div class="overview-grid">
+                <div class="overview-pipeline mono">
+                  <div class="proc-steps" id="procSteps">
+                    <div class="proc-step" data-step="0"><span class="proc-mark">○</span> ACQUISITION</div>
+                    <div class="proc-step" data-step="1"><span class="proc-mark">○</span> PDW EXTRACTION</div>
+                    <div class="proc-step" data-step="2"><span class="proc-mark">○</span> FEATURE ANALYSIS</div>
+                    <div class="proc-step" data-step="3"><span class="proc-mark">○</span> RELATIONSHIP ANALYSIS</div>
+                    <div class="proc-step" data-step="4"><span class="proc-mark">○</span> DEINTERLEAVING</div>
+                    <div class="proc-step" data-step="5"><span class="proc-mark">○</span> EMITTER STREAMS</div>
+                  </div>
+                  <div class="range-row mt-24" style="flex-direction:column;align-items:stretch;gap:6px;">
+                    <label class="axis-label">TRANSFORM SCRUB</label>
+                    <input type="range" id="scrubSlider" min="0" max="1000" value="0" aria-label="Manually scrub the signal transformation" />
+                  </div>
+                </div>
+                <div class="canvas-frame h-overview" id="overviewFrame">
+                  <canvas id="cvOverview"></canvas>
+                  <span class="cf-caption">TIME DOMAIN → FEATURE SPACE → EMITTER STREAMS</span>
+                  <span class="cf-caption right" id="overviewPhaseLabel">IDLE</span>
+                </div>
+                <div class="overview-telemetry">
+                  <div class="tele-item"><div class="k">PULSES RECEIVED</div><div class="v mono" id="telPulses">—</div></div>
+                  <div class="tele-item"><div class="k">PDWs PARSED</div><div class="v mono" id="telPdw">—</div></div>
+                  <div class="tele-item"><div class="k">ACTIVE EMITTERS</div><div class="v mono" id="telEmit">—</div></div>
+                  <div class="tele-item"><div class="k">TIME WINDOW</div><div class="v mono" id="telWindow">—</div></div>
+                  <div class="tele-item"><div class="k">CURRENT RF</div><div class="v mono" id="telRf">—</div></div>
+                  <div class="tele-item"><div class="k">CURRENT PRI</div><div class="v mono" id="telPri">—</div></div>
+                </div>
+              </div>
+              <p class="small-note mt-16">This visualization illustrates the signal-processing concept — acquisition, PDW extraction, feature-space structure, clustering and stream reconstruction. It does not represent the project's production deinterleaving methodology, which is described in the technical report.</p>
+            </div>
+
+            <div class="viz-panel" data-panel="time">
+              <div class="viz-toolbar">
+                <div class="grp"><span class="axis-label">TIME (μs) → · PULSE PARAMETER ↑</span></div>
+                <div class="grp zoom-controls">
+                  <button type="button" data-zoom="time-in">+</button>
+                  <button type="button" data-zoom="time-out">−</button>
+                  <button type="button" data-zoom="time-reset">RESET</button>
+                </div>
+              </div>
+              <div class="canvas-frame h-time" id="timeFrame">
+                <canvas id="cvTime"></canvas>
+                <span class="cf-caption">RAW / SEPARATED PULSE TIMELINE</span>
+              </div>
+            </div>
+
+            <div class="viz-panel" data-panel="feature">
+              <div class="viz-toolbar">
+                <div class="grp">
+                  <label class="axis-label">X</label>
+                  <select class="axis-select" id="featX">
+                    <option value="rf">RF</option><option value="toa">TOA</option><option value="pri">PRI</option><option value="pw">PW</option><option value="aoa">AOA</option>
+                  </select>
+                  <label class="axis-label">Y</label>
+                  <select class="axis-select" id="featY">
+                    <option value="pri">PRI</option><option value="toa">TOA</option><option value="rf">RF</option><option value="pw">PW</option><option value="aoa">AOA</option>
+                  </select>
+                </div>
+                <div class="grp zoom-controls">
+                  <button type="button" data-zoom="feat-in">+</button>
+                  <button type="button" data-zoom="feat-out">−</button>
+                  <button type="button" data-zoom="feat-reset">RESET</button>
+                </div>
+              </div>
+              <div class="canvas-frame h-feature" id="featureFrame">
+                <canvas id="cvFeature"></canvas>
+                <span class="cf-caption">PULSE FEATURE SPACE — ILLUSTRATIVE / SYNTHETIC DATA</span>
+              </div>
+            </div>
+
+            <div class="viz-panel" data-panel="freq">
+              <div class="viz-toolbar"><span class="axis-label">PULSE INDEX → · FREQUENCY (GHz) ↑</span></div>
+              <div class="canvas-frame h-freq" id="freqFrame">
+                <canvas id="cvFreq"></canvas>
+                <span class="cf-caption">RF / FREQUENCY-HOP TRAJECTORY</span>
+              </div>
+              <div class="freq-agility mono">
+                <div class="agility-box hi"><div class="k">CURRENT RF</div><div class="v" id="agCurrent">—</div></div>
+                <div class="agility-box"><div class="k">PREVIOUS RF</div><div class="v" id="agPrev">—</div></div>
+                <div class="agility-box"><div class="k">HOP</div><div class="v" id="agHop">—</div></div>
+              </div>
+            </div>
+
+            <div class="viz-panel" data-panel="pri">
+              <div class="viz-toolbar"><span class="axis-label">PULSE INDEX → · PRI (μs) ↑</span></div>
+              <div class="canvas-frame h-pri" id="priFrame">
+                <canvas id="cvPri"></canvas>
+                <span class="cf-caption">PRI / INTER-PULSE INTERVAL ANALYSIS</span>
+              </div>
+              <div class="pri-stats mono">
+                <div class="agility-box hi"><div class="k">CURRENT PRI</div><div class="v" id="priCurrent">—</div></div>
+                <div class="agility-box"><div class="k">MEDIAN PRI</div><div class="v" id="priMedian">—</div></div>
+                <div class="agility-box"><div class="k">PRI VARIABILITY</div><div class="v" id="priVar">—</div></div>
+              </div>
+            </div>
+
+            <div class="viz-panel" data-panel="waterfall">
+              <div class="waterfall-controls">
+                <button class="wf-btn on" id="wfLive">LIVE</button>
+                <button class="wf-btn" id="wfPause">PAUSE</button>
+                <button class="wf-btn" id="wfClear">CLEAR</button>
+              </div>
+              <div class="canvas-frame h-waterfall" id="waterfallFrame">
+                <canvas id="cvWaterfall"></canvas>
+                <span class="cf-caption">TIME → · FREQUENCY ↑ · SIGNAL DENSITY WATERFALL</span>
+              </div>
+              <p class="small-note mt-16">Generated from the current simulation's pulse data — not a claim about real electromagnetic interference or radar hardware.</p>
+            </div>
+
+            <div class="viz-panel" data-panel="emitters">
+              <div id="emittersHeader" class="mono" style="margin-bottom:6px;"></div>
+              <div class="canvas-frame h-emitters" id="emittersFrame">
+                <canvas id="cvEmitters"></canvas>
+                <span class="cf-caption">EMITTER STREAM RECONSTRUCTION</span>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="panel telemetry-strip mono" id="metricsRow">
+            <div class="metric"><div class="num mono" id="mTotal">—</div><div class="lbl">TOTAL PULSES</div></div>
+            <div class="metric"><div class="num mono" id="mEmit">—</div><div class="lbl">CANDIDATE EMITTERS</div></div>
+            <div class="metric"><div class="num mono" id="mProc">—</div><div class="lbl">PROCESSED PDWs</div></div>
+            <div class="metric"><div class="num mono" id="mStatus">IDLE</div><div class="lbl">PROCESSING STATUS</div></div>
+            <div class="metric"><div class="num mono" id="mNoise">—</div><div class="lbl">SYNTHETIC NOISE</div></div>
+            <div class="metric"><div class="num mono" id="mSel">—</div><div class="lbl">SELECTED PULSE</div></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title"><h3>PDW INSPECTOR</h3><span class="tag" id="outputTag">AWAITING RUN</span></div>
+            <div class="illustrative-tag">◆ Illustrative / synthetic values — demo only</div>
+            <div class="emitter-legend" id="emitterLegend"></div>
+            <div style="overflow-x:auto;">
+              <table class="pdw-table" id="pdwTable">
+                <thead><tr><th>PARAMETER</th><th>VALUE</th></tr></thead>
+                <tbody id="pdwBody"><tr><td colspan="2" style="color:var(--text-faint);">Select a pulse in any chart, or an emitter above, to inspect its PDW.</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="pulse-inspector" id="pulseInspector">
+    <div class="pi-head"><span class="pi-title">PULSE INSPECTOR</span><button class="pi-close" id="piClose" aria-label="Close">✕</button></div>
+    <div class="pi-row"><span>PULSE ID</span><b id="piId">—</b></div>
+    <div class="pi-row"><span>TOA</span><b id="piToa">—</b></div>
+    <div class="pi-row"><span>PRI</span><b id="piPri">—</b></div>
+    <div class="pi-row"><span>RF</span><b id="piRf">—</b></div>
+    <div class="pi-row"><span>PW</span><b id="piPw">—</b></div>
+    <div class="pi-row"><span>AOA</span><b id="piAoa">—</b></div>
+    <div class="pi-row"><span>EMITTER</span><b id="piEmitter">—</b></div>
+    <div class="pi-note">CONFIDENCE — demo / not a model score. No accuracy, precision or recall figures are implied.</div>
+  </div>
+  `;
+});
+
+/* ============================================================
+   PAGE: UNDERSTANDING
+   ============================================================ */
+registerRoute('/understanding', function(){
+  const pdws = [
+    { a:'TOA', f:'Time of Arrival', d:'The moment a pulse is received. TOA is particularly useful for initial sorting because pulse timing provides an important basis for identifying relationships between pulses.' },
+    { a:'PRI', f:'Pulse Repetition Interval', d:'The interval between successive pulses from the same emitter. Fixed, staggered or jittered PRI patterns are a key clue for grouping pulses.' },
+    { a:'AOA', f:'Angle of Arrival', d:'The direction from which a pulse was received, which can help distinguish emitters that share similar timing behaviour.' },
+    { a:'PW', f:'Pulse Width', d:'The duration of an individual pulse, another characteristic that can help separate emitters with overlapping timing.' },
+    { a:'RF', f:'Radio Frequency', d:'The carrier frequency of a pulse. In frequency-agile emitters, RF can change from pulse to pulse, adding complexity to sorting.' },
+  ];
+  return `
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">UNDERSTANDING THE PROBLEM</div>
+      <h2 class="h-section">From radar emissions to emitter-level pulse streams.</h2>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">01 — WHAT IS THE PROBLEM?</div>
+      <p class="lede" style="max-width:720px;">A receiver in a dense signal environment observes pulses from multiple radar emitters as a single interleaved stream. Pulse deinterleaving is the process of separating that stream back into individual emitter pulse trains.</p>
+      <div class="flow-diagram mt-40">
+        <div>
+          <div class="emitter-row"><span class="emitter-label mono">EMITTER A</span><div class="emitter-track" data-track="0"></div></div>
+          <div class="emitter-row"><span class="emitter-label mono">EMITTER B</span><div class="emitter-track" data-track="1"></div></div>
+          <div class="emitter-row"><span class="emitter-label mono">EMITTER C</span><div class="emitter-track" data-track="2"></div></div>
+        </div>
+        <div class="flow-arrow center">→</div>
+        <div>
+          <div class="emitter-label mono" style="width:auto;margin-bottom:10px;">MIXED STREAM</div>
+          <div class="emitter-track" data-track="mixed" style="height:44px;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap two-col">
+      <div>
+        <div class="eyebrow">02 — WHAT IS FREQUENCY AGILITY?</div>
+        <p class="lede">Frequency hopping, staggered PRI and randomised pulse behaviour let a radar system change its signal characteristics pulse-to-pulse — improving resistance to jamming and interception, while making external analysis harder.</p>
+      </div>
+      <div class="subpanel">
+        <div class="panel-tag">FREQUENCY HOPPING</div>
+        <div id="freqHopViz2" class="mt-16"></div>
+        <div class="panel-tag mt-24">STAGGERED PRI</div>
+        <div id="priViz2" class="mt-16"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">03 — WHY DOES IT MAKE PROCESSING HARD?</div>
+      <h2 class="h-section" style="font-size:24px;">Several overlapping sources of ambiguity compound at once.</h2>
+      <div class="grid grid-3 mt-24">
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Pulse timing variation across staggered or jittered PRI patterns.</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Emitters with similar characteristics complicate grouping.</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Overlapping observations from closely spaced pulses.</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Frequency changes remove a normally stable grouping cue.</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">PRI variation reduces reliability of interval-based sorting.</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Dense electromagnetic environments increase pulse density overall.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">04 — WHAT ARE PDWs?</div>
+      <h2 class="h-section" style="font-size:24px;">Pulse Descriptor Words carry the characteristics of each observed pulse.</h2>
+      <div class="pdw-cards mt-24" id="pdwCardsGrid">
+        ${pdws.map((p,i)=>`
+        <button class="pdw-card" data-idx="${i}" aria-expanded="false">
+          <div class="abbr">${p.a}</div>
+          <div class="full">${p.f}</div>
+          <div class="desc">${p.d}</div>
+        </button>`).join('')}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">05 — ESM &amp; ELINT</div>
+      <h2 class="h-section" style="font-size:24px;">Intercepted radar emissions become structured information through a chain of processing.</h2>
+      <div class="arch-diagram mt-24">
+        <div class="arch-node">SIGNAL</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PDW</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">DEINTERLEAVING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">EMITTER STREAM</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">ANALYSIS</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">06 — OUR SYSTEM</div>
+      <h2 class="h-section" style="font-size:24px;">Smart Deinterleaving Scheduler: a pipeline concept.</h2>
+      <div class="arch-diagram mt-24">
+        <div class="arch-node">INPUT</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PDW DATA</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">ANALYSIS</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">DEINTERLEAVING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">SCHEDULING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">VISUALIZATION</div>
+      </div>
+      <p class="small-note center mt-24">Implementation-specific algorithm details will be added once finalised.</p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap two-col">
+      <div class="subpanel">
+        <div class="eyebrow">07 — TECHNICAL LIMITATIONS</div>
+        <ul style="margin:16px 0 0; padding-left:18px; color:var(--text-dim); font-size:13.5px; line-height:2;">
+          <li>Noisy measurements</li>
+          <li>Overlapping pulse characteristics</li>
+          <li>Similar emitter signatures</li>
+          <li>Complex agile behaviour</li>
+          <li>Real-world electromagnetic conditions</li>
+        </ul>
+      </div>
+      <div class="subpanel">
+        <div class="eyebrow">08 — FUTURE DIRECTIONS</div>
+        <ul style="margin:16px 0 0; padding-left:18px; color:var(--text-dim); font-size:13.5px; line-height:2;">
+          <li>Larger datasets</li>
+          <li>More complex emitter behaviour</li>
+          <li>Noisy real-world environments</li>
+          <li>Adaptive processing</li>
+          <li>Real-time optimisation</li>
+          <li>Online / streaming processing</li>
+          <li>Hardware / edge deployment</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+  `;
+});
+
+/* ============================================================
+   PAGE: JOURNEY
+   ============================================================ */
+registerRoute('/journey', function(){
+  const items = [
+    ['01','PROBLEM DISCOVERY','Understanding the challenge of separating radar pulses from mixed streams.'],
+    ['02','RADAR SIGNAL STUDY','Studying frequency hopping, staggered PRI and agile radar behaviour.'],
+    ['03','PDW ANALYSIS','Understanding TOA, PRI, AOA, PW and RF.'],
+    ['04','DATA EXPLORATION','Exploring the Alan Turing Institute radar emitter dataset.'],
+    ['05','SYSTEM DESIGN','Designing the Smart Deinterleaving Scheduler concept and pipeline.'],
+    ['06','SIMULATION','Building the interactive demonstration environment.'],
+    ['07','VALIDATION','Validation details to be added as the project progresses.'],
+  ];
+  return `
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">JOURNEY</div>
+      <h2 class="h-section">From problem to prototype.</h2>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="timeline">
+        ${items.map(([n,t,d],i)=>`
+        <div class="tl-item">
+          <div class="tl-dot mono">${n}</div>
+          <div class="tl-num mono">STEP ${n}</div>
+          <div class="tl-title">${t}</div>
+          <div class="tl-desc">${d}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">RESEARCH FOUNDATION</div>
+      <h2 class="h-section" style="font-size:24px;">Grounded in radar signal processing and defence-relevant research.</h2>
+      <div class="grid grid-3 mt-24">
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Radar pulse deinterleaving</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Frequency-agile systems</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Pulse Descriptor Words</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">ESM / ELINT workflows</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Signal processing methods</div>
+        <div class="subpanel mono" style="font-size:13px;color:var(--text-dim);">Dataset-driven experimentation</div>
+      </div>
+      <p class="small-note mt-24">Academic references will be listed here once finalised by the team.</p>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap two-col">
+      <div class="subpanel dataset-card">
+        <div>
+          <div class="panel-tag">DATASET</div>
+          <div class="meta mt-8"><b>${CONFIG.datasetName}</b><br>${CONFIG.datasetOrg}</div>
+        </div>
+        <a class="btn btn-sm btn-ghost ext-link" data-kind="dataset" href="#">OPEN DATASET ↗</a>
+      </div>
+      <div class="subpanel dataset-card">
+        <div>
+          <div class="panel-tag">PROJECT REPORT</div>
+          <div class="meta mt-8">Methodology · System Architecture<br>Experiments · Results · Future Work</div>
+        </div>
+        <a class="btn btn-sm btn-ghost ext-link" data-kind="report" href="#">OPEN REPORT ↗</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">TECHNICAL ARCHITECTURE</div>
+      <h2 class="h-section" style="font-size:24px;">System pipeline overview.</h2>
+      <div class="arch-diagram mt-24">
+        <div class="arch-node">DATA SOURCE</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PDW REPRESENTATION</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">PREPROCESSING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">DEINTERLEAVING</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">SCHEDULER</div><div class="arch-arrow">↓</div>
+        <div class="arch-node">VISUALIZATION</div>
+      </div>
+    </div>
+  </section>
+  `;
+});
+
+/* ============================================================
+   PAGE: ABOUT
+   ============================================================ */
+registerRoute('/about', function(){
+  const members = [1,2,3,4,5,6];
+  return `
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">THE TEAM BEHIND THE SYSTEM</div>
+      <h2 class="h-section">Smart Deinterleaving Scheduler</h2>
+      <div class="grid grid-2 mt-24" style="max-width:520px;">
+        <div class="panel"><span class="panel-tag">SIH PROBLEM STATEMENT</span><span class="panel-value mono">26055</span></div>
+        <div class="panel"><span class="panel-tag">TEAM NAME</span><span class="panel-value mono">${CONFIG.teamName || 'Pending'}</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">TEAM MEMBERS · 6</div>
+      <div class="team-grid mt-24">
+        ${members.map(i=>`
+        <div class="panel team-card">
+          <div class="avatar">0${i}</div>
+          <div class="team-name">Member Name Pending</div>
+          <div class="team-role mono">TEAM MEMBER</div>
+          <div class="team-links">
+            <a href="#" onclick="showToast('Add member link in CONFIG or profile data.'); return false;">GitHub</a>
+            <a href="#" onclick="showToast('Add member link in CONFIG or profile data.'); return false;">LinkedIn</a>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="subpanel" style="max-width:720px;">
+        <div class="eyebrow">OUR MISSION</div>
+        <p class="lede" style="max-width:none;">We are building an interactive research prototype to explore intelligent deinterleaving of radar pulse streams in complex electromagnetic environments.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="wrap">
+      <div class="eyebrow">PROJECT LINKS</div>
+      <div class="link-row mt-16">
+        <a href="#" class="ext-link" data-kind="github">GitHub</a>
+        <a href="#" class="ext-link" data-kind="dataset">Dataset</a>
+        <a href="#" class="ext-link" data-kind="report">Project Report</a>
+      </div>
+    </div>
+  </section>
+  `;
+});
+
+/* ============================================================
+   PAGE-SPECIFIC BEHAVIOR BINDINGS
+   ============================================================ */
+function initPageBehaviors(){
+  const path = currentPath();
+  refreshExtLinks();
+  if(path === '/') initHome();
+  if(path === '/simulation') initSimulation();
+  else if(typeof stopLoop === 'function') stopLoop();
+  if(path === '/understanding') initUnderstanding();
+  setupReveal();
+}
+function refreshExtLinks(){
+  document.querySelectorAll('.ext-link').forEach(el=>{
+    const kind = el.dataset.kind;
+    const url = resolveLink(kind);
+    if(url) el.href = url;
+  });
+}
+
+/* ---- HOME ---- */
+function initHome(){
+  const base = [ seededPattern(9,11,0.5), seededPattern(7,42,0.6), seededPattern(8,77,0.55) ];
+  document.querySelectorAll('.page.active [data-track]').forEach(el=>{
+    const key = el.dataset.track;
+    const colorVar = el.dataset.color;
+    let pattern, color;
+    if(key === 'mixed' || key === 'mixed2'){
+      pattern = mergeSorted(base).map(p=>p.x);
+      color = 'var(--hi)';
+      renderPulseTrack(el, pattern, getComputedStyle(document.documentElement).getPropertyValue('--hi'));
+      return;
+    }
+    const idx = parseInt(key,10);
+    pattern = base[idx];
+    color = colorVar ? getComputedStyle(el).getPropertyValue(colorVar.replace('var(','').replace(')','')) : null;
+    const colors = ['#A6E1FA','#F2B84B','#59D6A6'];
+    renderPulseTrack(el, pattern, colors[idx]);
+  });
+
+  drawHeroRadar();
+  drawAgileViz('freqHopViz', 'freq');
+  drawAgileViz('priViz', 'pri');
+}
+
+function drawHeroRadar(){
+  const box = document.getElementById('heroRadar');
+  if(!box) return;
+  const size = 420;
+  const svg = svgEl('svg', { viewBox:`0 0 ${size} ${size}`, width:'100%', height:'100%' });
+  const c = size/2;
+  [1,2,3,4].forEach(i=>{
+    svg.appendChild(svgEl('circle', { cx:c, cy:c, r:(size/2-10)*(i/4), fill:'none', stroke:'rgba(166,225,250,0.16)', 'stroke-width':1 }));
+  });
+  for(let a=0;a<360;a+=30){
+    const rad = a*Math.PI/180;
+    svg.appendChild(svgEl('line', { x1:c, y1:c, x2:c+Math.cos(rad)*(size/2-10), y2:c+Math.sin(rad)*(size/2-10), stroke:'rgba(166,225,250,0.08)', 'stroke-width':1 }));
+  }
+  const colors = ['#A6E1FA','#F2B84B','#59D6A6'];
+  const radii = [0.35,0.55,0.78];
+  colors.forEach((col,i)=>{
+    const ang = i*120+18;
+    const rad = ang*Math.PI/180;
+    const r = (size/2-10)*radii[i];
+    const cx = c+Math.cos(rad)*r, cy = c+Math.sin(rad)*r;
+    const dot = svgEl('circle', { cx, cy, r:5, fill:col });
+    dot.style.filter = 'drop-shadow(0 0 6px ' + col + ')';
+    svg.appendChild(dot);
+  });
+  const sweep = svgEl('g', {});
+  sweep.appendChild(svgEl('line', { x1:c, y1:c, x2:c, y2:10, stroke:'#A6E1FA', 'stroke-width':1.4 }));
+  const wedge = svgEl('path', { d:`M ${c} ${c} L ${c} 10 A ${c-10} ${c-10} 0 0 1 ${c+ (c-10)*Math.sin(0.6)} ${c-(c-10)*Math.cos(0.6)} Z`, fill:'rgba(166,225,250,0.14)' });
+  sweep.appendChild(wedge);
+  const anim = svgEl('animateTransform', { attributeName:'transform', type:'rotate', from:`0 ${c} ${c}`, to:`360 ${c} ${c}`, dur:'6s', repeatCount:'indefinite' });
+  sweep.appendChild(anim);
+  svg.appendChild(sweep);
+  box.innerHTML = '';
+  box.appendChild(svg);
+}
+
+function drawAgileViz(id, kind){
+  const box = document.getElementById(id);
+  if(!box) return;
+  const items = kind === 'freq' ? ['F1','F4','F2','F7','F3'] : ['10 μs','17 μs','12 μs','21 μs'];
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">${
+    items.map((v,i)=>`<span class="mono" style="border:1px solid var(--line-strong);padding:8px 12px;border-radius:2px;font-size:12px;color:var(--hi);">${v}</span>${i<items.length-1?'<span class="mono" style="color:var(--text-faint);">→</span>':''}`).join('')
+  }</div>`;
+}
+
+/* ---- UNDERSTANDING ---- */
+function initUnderstanding(){
+  document.querySelectorAll('.page.active [data-track]').forEach(el=>{
+    const key = el.dataset.track;
+    const base = [ seededPattern(9,11,0.5), seededPattern(7,42,0.6), seededPattern(8,77,0.55) ];
+    if(key === 'mixed'){
+      renderPulseTrack(el, mergeSorted(base).map(p=>p.x), '#A6E1FA');
+      return;
+    }
+    const idx = parseInt(key,10);
+    const colors = ['#A6E1FA','#F2B84B','#59D6A6'];
+    renderPulseTrack(el, base[idx], colors[idx]);
+  });
+  drawAgileViz('freqHopViz2','freq');
+  drawAgileViz('priViz2','pri');
+
+  document.querySelectorAll('#pdwCardsGrid .pdw-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const isOpen = card.classList.contains('open');
+      document.querySelectorAll('#pdwCardsGrid .pdw-card').forEach(c=>{ c.classList.remove('open'); c.setAttribute('aria-expanded','false'); });
+      if(!isOpen){ card.classList.add('open'); card.setAttribute('aria-expanded','true'); }
+    });
+  });
+}
+
+/* ============================================================
+   SIGNAL INTELLIGENCE ENGINE
+   Data model, Canvas visualization engine and interaction layer
+   for the demonstration pipeline. All pulse data is synthetic
+   and generated client-side for illustration only — it is not
+   drawn from a live receiver and does not represent the
+   project's production deinterleaving methodology.
+   ============================================================ */
+const EMITTER_COLORS = ['#A6E1FA','#F2B84B','#59D6A6','#E27DBF','#8FA6FF'];
+
+function lerp(a,b,t){ return a + (b-a)*t; }
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function prefersReducedMotion(){ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+
+/* ---- shared engine state ---- */
+let sim = {
+  cfg:{ emitterCount:3, freqMode:'agile', priMode:'stagger', noiseLevel:'medium', timeWindow:260, speed:2 },
+  emitters:[], pulses:[],
+  generated:false, running:false, paused:false, progress:0,
+  lastFrameTime:0, activeTab:'overview',
+  selectedId:null, hoverId:null,
+  featX:'rf', featY:'pri',
+  view:{ time:{ scale:1, offset:0 }, feature:{ scale:1, offset:0, panX:0, panY:0 } },
+  waterfall:{ rows:[], live:true, tAccum:0 },
+  judgeMode:false, rafId:null,
+  hitTargets:{ time:[], feature:[], freq:[], pri:[], emitters:[], overview:[] },
+};
+let simBooted = false;
+
+/* ============================================================
+   DATA MODEL — separate from rendering
+   ============================================================ */
+function rngFactory(seed){
+  let s = seed % 2147483647; if(s<=0) s += 2147483646;
+  return function(){ s = (s*16807) % 2147483647; return (s-1)/2147483646; };
+}
+function buildHopSet(nominal,n,rnd){
+  const set=[];
+  for(let i=0;i<n;i++) set.push(+(nominal + (rnd()-0.5)*0.9 + i*0.11).toFixed(3));
+  return set;
+}
+function generateSignalModel(cfg){
+  const rnd = rngFactory(Date.now()%100000 + 7);
+  const emitters=[];
+  for(let e=0;e<cfg.emitterCount;e++){
+    const nominalRF = +(9.1 + e*0.42 + rnd()*0.12).toFixed(3);
+    const agile = cfg.freqMode === 'agile';
+    const freqSet = agile ? buildHopSet(nominalRF, 4+(e%2), rnd) : [nominalRF];
+    const basePRI = +(10 + e*4.2 + rnd()*3).toFixed(2);
+    const pw = +(0.7 + rnd()*2.1).toFixed(2);
+    const aoaCenter = +(rnd()*360).toFixed(1);
+    emitters.push({ id:e, color:EMITTER_COLORS[e%EMITTER_COLORS.length], nominalRF, freqSet, basePRI, pw, aoaCenter, agile, priMode:cfg.priMode });
+  }
+  let pulses=[], pid=0;
+  emitters.forEach(em=>{
+    let t = rnd()*em.basePRI;
+    let hop = Math.floor(rnd()*em.freqSet.length);
+    while(t < cfg.timeWindow){
+      let pri = em.basePRI;
+      if(em.priMode==='stagger'){ pri = em.basePRI * (0.55 + (hop%3)*0.45); }
+      else if(em.priMode==='jitter'){ pri = em.basePRI * (0.8 + rnd()*0.4); }
+      const rf = em.agile ? em.freqSet[hop % em.freqSet.length] : em.nominalRF;
+      pulses.push({
+        id:'P'+String(pid).padStart(4,'0'), emitterId:em.id,
+        toa:+t.toFixed(3), pri:+pri.toFixed(2), rf:rf,
+        pw:+(em.pw + (rnd()-0.5)*0.25).toFixed(2), aoa:+(em.aoaCenter + (rnd()-0.5)*7).toFixed(1),
+        amplitude:+(0.45+rnd()*0.55).toFixed(2), noise:false,
+      });
+      pid++; hop++; t += pri;
+    }
+  });
+  const noiseCount = { low:2, medium:7, high:18 }[cfg.noiseLevel] || 0;
+  for(let i=0;i<noiseCount;i++){
+    pulses.push({
+      id:'N'+String(i).padStart(3,'0'), emitterId:-1,
+      toa:+(rnd()*cfg.timeWindow).toFixed(3), pri:+(4+rnd()*20).toFixed(2),
+      rf:+(9+rnd()*2.2).toFixed(3), pw:+(0.3+rnd()*1.5).toFixed(2),
+      aoa:+(rnd()*360).toFixed(1), amplitude:+(0.15+rnd()*0.3).toFixed(2), noise:true,
+    });
+  }
+  pulses.sort((a,b)=>a.toa-b.toa);
+  pulses.forEach((p,i)=>p.index=i);
+  return { emitters, pulses };
+}
+
+/* ============================================================
+   CANVAS HELPERS
+   ============================================================ */
+function fitCanvas(canvas){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.floor(rect.width)), h = Math.max(1, Math.floor(rect.height));
+  if(canvas._cw!==w || canvas._ch!==h || canvas._ratio!==ratio){
+    canvas.width = w*ratio; canvas.height = h*ratio;
+    canvas.style.width = w+'px'; canvas.style.height = h+'px';
+    canvas._cw=w; canvas._ch=h; canvas._ratio=ratio;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+  return { ctx, w, h };
+}
+function drawGridLines(ctx,w,h,vLines,hLines){
+  ctx.save(); ctx.strokeStyle='rgba(166,225,250,0.07)'; ctx.lineWidth=1;
+  for(let i=0;i<=vLines;i++){ const x=Math.round((w/vLines)*i)+0.5; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for(let i=0;i<=hLines;i++){ const y=Math.round((h/hLines)*i)+0.5; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  ctx.restore();
+}
+function axisText(ctx,text,x,y,align,color){
+  ctx.save(); ctx.font='9.5px "IBM Plex Mono", monospace'; ctx.fillStyle=color||'rgba(147,169,204,0.85)';
+  ctx.textAlign=align||'left'; ctx.textBaseline='middle'; ctx.fillText(text,x,y); ctx.restore();
+}
+function emptyState(ctx,w,h,msg){
+  ctx.save(); ctx.font='11px "IBM Plex Mono", monospace'; ctx.fillStyle='rgba(93,112,150,0.9)';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(msg, w/2, h/2); ctx.restore();
+}
+function drawCallout(ctx,x,y,lines,plotW){
+  ctx.save(); ctx.font='10px "IBM Plex Mono", monospace';
+  const width=132, lh=14, height=10+lines.length*lh;
+  let bx = x+10; if(bx+width>plotW) bx = x-10-width;
+  ctx.fillStyle='rgba(0,10,50,0.92)'; ctx.strokeStyle='rgba(166,225,250,0.35)'; ctx.lineWidth=1;
+  ctx.fillRect(bx,y,width,height); ctx.strokeRect(bx,y,width,height);
+  lines.forEach((l,i)=>{
+    ctx.fillStyle = i===0 ? '#A6E1FA' : '#EEF3FA'; ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText(l, bx+8, y+8+i*lh);
+  });
+  ctx.restore();
+}
+function emitterColor(p){ return p.noise ? 'rgba(166,225,250,0.28)' : EMITTER_COLORS[p.emitterId % EMITTER_COLORS.length]; }
+function hexToRgb(hex){ const v=parseInt(hex.slice(1),16); return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 }; }
+function parseRgba(str){ const m=str.match(/[\d.]+/g).map(Number); return { r:m[0], g:m[1], b:m[2] }; }
+function mixLerpColor(c1,c2,t){
+  const a=parseRgba(c1), b=hexToRgb(c2);
+  return `rgb(${Math.round(lerp(a.r,b.r,t))},${Math.round(lerp(a.g,b.g,t))},${Math.round(lerp(a.b,b.b,t))})`;
+}
+function computeDomain(key){
+  const vals = sim.pulses.map(p=>p[key]);
+  let min=Math.min(...vals), max=Math.max(...vals);
+  if(min===max){ min-=1; max+=1; }
+  const pad=(max-min)*0.08;
+  return [min-pad, max+pad];
+}
+function isPanelActive(tabKey){
+  const panel = document.querySelector('.viz-panel[data-panel="'+tabKey+'"]');
+  return !!(panel && panel.classList.contains('active'));
+}
+
+/* ============================================================
+   TIME DOMAIN VIEW
+   ============================================================ */
+function drawTimeDomain(){
+  const canvas = document.getElementById('cvTime'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!sim.generated){ emptyState(ctx,w,h,'GENERATE A SIGNAL TO BEGIN'); sim.hitTargets.time=[]; return; }
+  const pad={ l:8, r:8, t:16, b:26 };
+  const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
+  const tv = sim.view.time, tMax = sim.cfg.timeWindow;
+  drawGridLines(ctx,plotW,plotH,10,4);
+  ctx.save(); ctx.translate(pad.l,pad.t);
+  function xFor(toa){ return ((toa/tMax)*plotW)*tv.scale - tv.offset; }
+  ctx.strokeStyle='rgba(166,225,250,0.25)'; ctx.beginPath(); ctx.moveTo(0,plotH-14); ctx.lineTo(plotW,plotH-14); ctx.stroke();
+
+  const colored = sim.progress >= 0.98;
+  const targets=[];
+  sim.pulses.forEach(p=>{
+    const x = xFor(p.toa);
+    if(x<-12 || x>plotW+12) return;
+    const baseY = plotH-14, amp = 18 + p.amplitude*46;
+    const isSelected = sim.selectedId===p.id, isHover = sim.hoverId===p.id;
+    const col = colored ? emitterColor(p) : (p.noise ? 'rgba(166,225,250,0.22)' : 'rgba(166,225,250,0.85)');
+    ctx.strokeStyle=col; ctx.lineWidth=isSelected?2.4:1.4; ctx.globalAlpha=isSelected||isHover?1:0.82;
+    ctx.beginPath(); ctx.moveTo(x,baseY); ctx.lineTo(x,baseY-amp); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,baseY-amp, isSelected?4:2.4, 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    if(isSelected||isHover){ ctx.globalAlpha=0.18; ctx.beginPath(); ctx.arc(x,baseY-amp,10,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); }
+    ctx.globalAlpha=1;
+    targets.push({ id:p.id, x:x+pad.l, y:baseY-amp+pad.t, r:9 });
+  });
+
+  const sel = sim.pulses.find(p=>p.id===sim.selectedId);
+  if(sel){
+    const x = xFor(sel.toa);
+    ctx.strokeStyle='rgba(166,225,250,0.35)'; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,plotH); ctx.stroke(); ctx.setLineDash([]);
+    drawCallout(ctx,x,10,[ 'PULSE '+sel.id, 'TOA  '+sel.toa.toFixed(2)+' μs', 'RF   '+sel.rf.toFixed(2)+' GHz', 'PW   '+sel.pw.toFixed(2)+' μs', 'PRI  '+sel.pri.toFixed(2)+' μs' ], plotW);
+  }
+  ctx.restore();
+  axisText(ctx,'0 μs', pad.l+4, h-10, 'left');
+  axisText(ctx, tMax.toFixed(0)+' μs', w-pad.r-4, h-10, 'right');
+  sim.hitTargets.time = targets;
+}
+
+/* ============================================================
+   FEATURE SPACE VIEW
+   ============================================================ */
+function drawFeatureSpace(){
+  const canvas = document.getElementById('cvFeature'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!sim.generated){ emptyState(ctx,w,h,'GENERATE A SIGNAL TO BEGIN'); sim.hitTargets.feature=[]; return; }
+  const pad={ l:44, r:16, t:16, b:30 };
+  const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
+  const xk=sim.featX, yk=sim.featY;
+  const dx=computeDomain(xk), dy=computeDomain(yk);
+  const fv = sim.view.feature;
+  ctx.save(); ctx.translate(pad.l,pad.t);
+  drawGridLines(ctx,plotW,plotH,8,6);
+  function X(v){ return ((v-dx[0])/(dx[1]-dx[0]))*plotW*fv.scale + fv.panX; }
+  function Y(v){ return plotH - ((v-dy[0])/(dy[1]-dy[0]))*plotH*fv.scale + fv.panY; }
+
+  const relAlpha = sim.running ? clamp((sim.progress-0.55)/0.15,0,1) * (1-clamp((sim.progress-0.70)/0.15,0,1)) : 0;
+  if(relAlpha>0.02){
+    ctx.globalAlpha = relAlpha*0.55;
+    sim.emitters.forEach((em,e)=>{
+      const pts = sim.pulses.filter(p=>p.emitterId===e);
+      ctx.strokeStyle = em.color; ctx.lineWidth=0.8;
+      for(let i=1;i<pts.length;i++){ ctx.beginPath(); ctx.moveTo(X(pts[i-1][xk]),Y(pts[i-1][yk])); ctx.lineTo(X(pts[i][xk]),Y(pts[i][yk])); ctx.stroke(); }
+    });
+    ctx.globalAlpha=1;
+  }
+
+  const colorProgress = sim.running ? clamp((sim.progress-0.3)/0.35,0,1) : (sim.progress>=0.98?1:0);
+  const targets=[];
+  sim.pulses.forEach(p=>{
+    const x=X(p[xk]), y=Y(p[yk]);
+    if(x<-12||x>plotW+12||y<-12||y>plotH+12) return;
+    const mixedCol='rgba(166,225,250,0.55)';
+    const col = colorProgress<=0.01 ? mixedCol : mixLerpColor(mixedCol, emitterColor(p), colorProgress);
+    const isSelected=sim.selectedId===p.id, isHover=sim.hoverId===p.id;
+    ctx.globalAlpha = isSelected||isHover?1:0.78;
+    ctx.beginPath(); ctx.arc(x,y, isSelected?5:(p.noise?2:3), 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    if(isSelected){ ctx.globalAlpha=0.25; ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); }
+    ctx.globalAlpha=1;
+    targets.push({ id:p.id, x:x+pad.l, y:y+pad.t, r:8 });
+  });
+  ctx.restore();
+  axisText(ctx, xk.toUpperCase()+(xk==='rf'?' (GHz)':xk==='pri'||xk==='toa'||xk==='pw'?' (μs)':' (°)'), w-pad.r, h-10, 'right', '#93A9CC');
+  ctx.save(); ctx.translate(12,pad.t); ctx.rotate(-Math.PI/2); axisText(ctx, yk.toUpperCase(), 0,0,'left','#93A9CC'); ctx.restore();
+  sim.hitTargets.feature = targets;
+}
+
+/* ============================================================
+   FREQUENCY-HOP TRAJECTORY VIEW
+   ============================================================ */
+function strokeStepLine(ctx,pts,color){
+  ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.beginPath();
+  pts.forEach((pt,i)=>{ if(i===0){ ctx.moveTo(pt.x,pt.y); } else { ctx.lineTo(pt.x,pts[i-1].y); ctx.lineTo(pt.x,pt.y); } });
+  ctx.stroke();
+}
+function drawFreqView(){
+  const canvas = document.getElementById('cvFreq'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!sim.generated){ emptyState(ctx,w,h,'GENERATE A SIGNAL TO BEGIN'); sim.hitTargets.freq=[]; return; }
+  const pad={ l:50, r:16, t:16, b:26 };
+  const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
+  const rfAll = sim.pulses.map(p=>p.rf);
+  const rMin=Math.min(...rfAll), rMax=Math.max(...rfAll), rPad=(rMax-rMin)*0.15||0.1;
+  ctx.save(); ctx.translate(pad.l,pad.t);
+  drawGridLines(ctx,plotW,plotH,8,4);
+  function Y(v){ return plotH - ((v-(rMin-rPad))/((rMax+rPad)-(rMin-rPad)))*plotH; }
+  const reveal = sim.running ? clamp(sim.progress/0.4,0,1) : 1;
+  const targets=[];
+  sim.emitters.forEach((em,ei)=>{
+    const pts = sim.pulses.filter(p=>p.emitterId===ei);
+    const n = Math.max(1, Math.round(pts.length*reveal));
+    const shown = pts.slice(0,n);
+    const coords = shown.map((p,i)=>({ x:(i/((pts.length-1)||1))*plotW, y:Y(p.rf) }));
+    ctx.globalAlpha=0.9; strokeStepLine(ctx,coords,em.color); ctx.globalAlpha=1;
+    coords.forEach((c,i)=>{
+      const p = shown[i]; const isSel = sim.selectedId===p.id;
+      ctx.beginPath(); ctx.arc(c.x,c.y, isSel?4:2, 0, Math.PI*2); ctx.fillStyle=isSel?'#fff':em.color; ctx.fill();
+      targets.push({ id:p.id, x:c.x+pad.l, y:c.y+pad.t, r:8 });
+    });
+  });
+  ctx.restore();
+  axisText(ctx, rMin.toFixed(2)+' GHz', 6, h-pad.b, 'left');
+  axisText(ctx, rMax.toFixed(2)+' GHz', 6, pad.t+6, 'left');
+  sim.hitTargets.freq = targets;
+
+  const em0 = sim.pulses.filter(p=>p.emitterId===0);
+  const ref = sim.pulses.find(p=>p.id===sim.selectedId) || em0[em0.length-1];
+  if(ref){
+    const sameE = sim.pulses.filter(p=>p.emitterId===ref.emitterId);
+    const pos = sameE.findIndex(p=>p.id===ref.id);
+    const prev = pos>0 ? sameE[pos-1] : null;
+    document.getElementById('agCurrent').textContent = ref.rf.toFixed(2)+' GHz';
+    document.getElementById('agPrev').textContent = prev ? prev.rf.toFixed(2)+' GHz' : '—';
+    document.getElementById('agHop').textContent = prev ? (((ref.rf-prev.rf)>=0?'+':'')+((ref.rf-prev.rf)*1000).toFixed(0)+' MHz') : '—';
+  }
+}
+
+/* ============================================================
+   PRI ANALYSIS VIEW
+   ============================================================ */
+function drawPriView(){
+  const canvas = document.getElementById('cvPri'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!sim.generated){ emptyState(ctx,w,h,'GENERATE A SIGNAL TO BEGIN'); sim.hitTargets.pri=[]; return; }
+  const pad={ l:50, r:16, t:16, b:26 };
+  const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
+  const pris = sim.pulses.map(p=>p.pri);
+  const pMax = Math.max(...pris)*1.1;
+  ctx.save(); ctx.translate(pad.l,pad.t);
+  drawGridLines(ctx,plotW,plotH,8,4);
+  const colored = sim.progress>=0.98;
+  const targets=[];
+  sim.pulses.forEach((p,i)=>{
+    const x=(i/((sim.pulses.length-1)||1))*plotW, y=plotH-(p.pri/pMax)*plotH;
+    const col = colored ? emitterColor(p) : 'rgba(166,225,250,0.7)';
+    ctx.strokeStyle='rgba(166,225,250,0.18)'; ctx.beginPath(); ctx.moveTo(x,plotH); ctx.lineTo(x,y); ctx.stroke();
+    const isSel = sim.selectedId===p.id;
+    ctx.beginPath(); ctx.arc(x,y,isSel?4.5:2.6,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    targets.push({ id:p.id, x:x+pad.l, y:y+pad.t, r:8 });
+  });
+  ctx.restore();
+  axisText(ctx,'0 μs', 6, h-pad.b, 'left'); axisText(ctx, pMax.toFixed(0)+' μs', 6, pad.t+6, 'left');
+  sim.hitTargets.pri = targets;
+
+  const sorted = [...pris].sort((a,b)=>a-b);
+  const median = sorted[Math.floor(sorted.length/2)];
+  const q1 = sorted[Math.floor(sorted.length*0.25)], q3 = sorted[Math.floor(sorted.length*0.75)];
+  const ref = sim.pulses.find(p=>p.id===sim.selectedId) || sim.pulses[sim.pulses.length-1];
+  document.getElementById('priCurrent').textContent = ref ? ref.pri.toFixed(2)+' μs' : '—';
+  document.getElementById('priMedian').textContent = median!==undefined ? median.toFixed(2)+' μs' : '—';
+  document.getElementById('priVar').textContent = (q3!==undefined && q1!==undefined) ? '±'+((q3-q1)/2).toFixed(1)+' μs (IQR)' : '—';
+}
+
+/* ============================================================
+   EMITTER STREAM RECONSTRUCTION VIEW
+   ============================================================ */
+function drawEmittersView(){
+  const canvas = document.getElementById('cvEmitters'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!sim.generated){ emptyState(ctx,w,h,'GENERATE A SIGNAL TO BEGIN'); sim.hitTargets.emitters=[]; updateEmitterHeaders(); return; }
+  if(sim.progress < 0.98){ emptyState(ctx,w,h,'RUN DEINTERLEAVING TO RECONSTRUCT EMITTER STREAMS'); sim.hitTargets.emitters=[]; updateEmitterHeaders(); return; }
+  const pad={ l:14, r:14, t:10, b:10 };
+  const plotW = w-pad.l-pad.r;
+  const laneH = (h-pad.t-pad.b) / sim.emitters.length;
+  const targets=[];
+  ctx.save(); ctx.translate(pad.l,pad.t);
+  sim.emitters.forEach((em,ei)=>{
+    const y0 = ei*laneH;
+    ctx.strokeStyle='rgba(166,225,250,0.1)'; ctx.beginPath(); ctx.moveTo(0,y0+laneH-10); ctx.lineTo(plotW,y0+laneH-10); ctx.stroke();
+    axisText(ctx,'EMITTER 0'+(ei+1), 4, y0+10, 'left', em.color);
+    sim.pulses.filter(p=>p.emitterId===ei).forEach(p=>{
+      const x = (p.toa/sim.cfg.timeWindow)*plotW;
+      const isSel = sim.selectedId===p.id, isHover = sim.hoverId===p.id;
+      const amp = 8 + p.amplitude*16;
+      ctx.strokeStyle=em.color; ctx.lineWidth=isSel?2.6:1.6; ctx.globalAlpha=isSel||isHover?1:0.85;
+      ctx.beginPath(); ctx.moveTo(x,y0+laneH-10); ctx.lineTo(x,y0+laneH-10-amp); ctx.stroke();
+      if(isSel||isHover){ ctx.globalAlpha=0.2; ctx.beginPath(); ctx.arc(x,y0+laneH-10-amp,9,0,Math.PI*2); ctx.fillStyle=em.color; ctx.fill(); }
+      ctx.globalAlpha=1;
+      targets.push({ id:p.id, x:x+pad.l, y:y0+laneH-10-amp+pad.t, r:8 });
+    });
+  });
+  ctx.restore();
+  sim.hitTargets.emitters = targets;
+  updateEmitterHeaders();
+}
+function updateEmitterHeaders(){
+  const el = document.getElementById('emittersHeader'); if(!el) return;
+  if(!sim.generated || sim.progress<0.98){ el.innerHTML=''; return; }
+  el.innerHTML = sim.emitters.map((em,ei)=>{
+    const pts = sim.pulses.filter(p=>p.emitterId===ei);
+    const rfs = pts.map(p=>p.rf);
+    const rfSpan = em.agile ? (Math.min(...rfs).toFixed(2)+'–'+Math.max(...rfs).toFixed(2)+' GHz (agile)') : ((rfs[0]||0).toFixed(2)+' GHz (fixed)');
+    const priModeLabel = em.priMode==='stagger' ? 'staggered' : em.priMode==='jitter' ? 'jittered' : 'fixed';
+    return '<div class="emitter-panel-head" data-em="'+ei+'">'
+      + '<div class="name"><span class="swatch" style="background:'+em.color+';"></span>EMITTER 0'+(ei+1)+' · <span style="color:var(--em3);font-size:10px;">IDENTIFIED</span></div>'
+      + '<div class="stat"><span>RF '+rfSpan+'</span><span>PRI '+priModeLabel+', ~'+em.basePRI.toFixed(1)+' μs</span><span>AOA '+em.aoaCenter.toFixed(0)+'°</span><span>PULSES '+pts.length+'</span></div>'
+      + '</div>';
+  }).join('');
+}
+
+/* ============================================================
+   WATERFALL / SIGNAL-DENSITY VIEW
+   ============================================================ */
+function initWaterfall(){ sim.waterfall.rows=[]; sim.waterfall.tAccum=0; }
+function stepWaterfall(dt){
+  if(!sim.generated || !sim.waterfall.live || prefersReducedMotion()) return;
+  sim.waterfall.tAccum += dt;
+  const rowInterval = 90;
+  while(sim.waterfall.tAccum > rowInterval){
+    sim.waterfall.tAccum -= rowInterval;
+    const bins=64; const row=new Float32Array(bins);
+    const rfAll = sim.pulses.map(p=>p.rf), rMin=Math.min(...rfAll), rMax=Math.max(...rfAll);
+    const tCenter = (Date.now()/38) % sim.cfg.timeWindow;
+    sim.pulses.forEach(p=>{
+      const d = Math.abs(p.toa - tCenter);
+      if(d < sim.cfg.timeWindow*0.03){
+        const bin = clamp(Math.floor(((p.rf-rMin)/((rMax-rMin)||1))*bins),0,bins-1);
+        row[bin] = Math.min(1, row[bin]+p.amplitude);
+      }
+    });
+    sim.waterfall.rows.unshift(row);
+    if(sim.waterfall.rows.length>140) sim.waterfall.rows.pop();
+  }
+}
+function drawWaterfall(){
+  const canvas = document.getElementById('cvWaterfall'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  if(!sim.generated){ emptyState(ctx,w,h,'GENERATE A SIGNAL TO BEGIN'); return; }
+  const rows = sim.waterfall.rows;
+  const rowH = Math.max(2, h/140);
+  const bins = rows[0] ? rows[0].length : 64;
+  const colW = w/bins;
+  rows.forEach((row,ri)=>{
+    const y = ri*rowH; if(y>h) return;
+    for(let b=0;b<bins;b++){
+      const v = row[b]; if(v<=0.02) continue;
+      const alpha = Math.min(0.9,v) * (1-ri/rows.length*0.4);
+      ctx.fillStyle = 'rgba(166,225,250,'+alpha.toFixed(3)+')';
+      ctx.fillRect(b*colW, y, colW+0.5, rowH+0.5);
+    }
+  });
+  ctx.strokeStyle='rgba(166,225,250,0.06)';
+  for(let i=1;i<8;i++){ const x=(w/8)*i; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+}
+
+/* ============================================================
+   OVERVIEW — cinematic phase-driven transformation canvas
+   ============================================================ */
+function drawOverview(){
+  const canvas = document.getElementById('cvOverview'); if(!canvas) return;
+  const { ctx,w,h } = fitCanvas(canvas);
+  ctx.clearRect(0,0,w,h);
+  const lbl = document.getElementById('overviewPhaseLabel');
+  if(!sim.generated){ emptyState(ctx,w,h,'PRESS GENERATE SIGNAL TO BEGIN'); sim.hitTargets.overview=[]; if(lbl) lbl.textContent='IDLE'; return; }
+
+  const t = sim.progress;
+  const pad={ l:16, r:16, t:16, b:16 };
+  const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
+  drawGridLines(ctx,plotW,plotH,10,6);
+  ctx.save(); ctx.translate(pad.l,pad.t);
+
+  const seg = { acq:[0,0.15], pdw:[0.15,0.30], feat:[0.30,0.55], rel:[0.55,0.70], clus:[0.70,0.85], recon:[0.85,1.0] };
+  function segT(name){ const b=seg[name]; return clamp((t-b[0])/(b[1]-b[0]),0,1); }
+
+  const tMax = sim.cfg.timeWindow;
+  const rfAll = sim.pulses.map(p=>p.rf), rMin=Math.min(...rfAll), rMax=Math.max(...rfAll);
+  const priAll = sim.pulses.map(p=>p.pri), prMin=Math.min(...priAll), prMax=Math.max(...priAll);
+
+  function posA(p){ return { x:(p.toa/tMax)*plotW, y: plotH-20 - (p.index%7)*((plotH-60)/7) }; }
+  function posB(p){ return { x:((p.rf-rMin)/((rMax-rMin)||1))*plotW*0.9+plotW*0.05, y: plotH - (((p.pri-prMin)/((prMax-prMin)||1))*plotH*0.75+plotH*0.1) }; }
+  function posC(p){ const laneH=plotH/sim.emitters.length; return { x:(p.toa/tMax)*plotW, y: p.emitterId>=0 ? p.emitterId*laneH+laneH*0.6 : plotH-6 }; }
+
+  let blend='A', label='ACQUISITION', acqReveal=1, relAlpha=0, clusterSplit=0;
+  if(t <= seg.acq[1]){ blend='A'; label='ACQUISITION'; acqReveal=segT('acq'); }
+  else if(t <= seg.pdw[1]){ blend='A'; label='PDW EXTRACTION'; acqReveal=1; }
+  else if(t <= seg.feat[1]){ blend='AB'; label='FEATURE SPACE'; acqReveal=1; }
+  else if(t <= seg.rel[1]){ blend='B'; label='RELATIONSHIP ANALYSIS'; acqReveal=1; relAlpha=Math.sin(segT('rel')*Math.PI); }
+  else if(t <= seg.clus[1]){ blend='B'; label='DEINTERLEAVING'; acqReveal=1; clusterSplit=segT('clus'); }
+  else { blend='BC'; label='EMITTER STREAMS'; acqReveal=1; clusterSplit=1; }
+
+  if(label==='ACQUISITION'){
+    const beamX = acqReveal*plotW;
+    ctx.strokeStyle='rgba(166,225,250,0.55)'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(beamX,0); ctx.lineTo(beamX,plotH); ctx.stroke();
+    ctx.fillStyle='rgba(166,225,250,0.08)'; ctx.fillRect(Math.max(0,beamX-40),0,40,plotH);
+  }
+
+  const clusterCenters = sim.emitters.map((em,ei)=>{
+    const ang = (ei/sim.emitters.length)*Math.PI*2 - Math.PI/2;
+    return { x: plotW/2 + Math.cos(ang)*plotW*0.32, y: plotH/2 + Math.sin(ang)*plotH*0.32 };
+  });
+
+  const targets=[];
+  sim.pulses.forEach(p=>{
+    const a=posA(p), b=posB(p), c=posC(p);
+    let x,y,alpha=1,col;
+    if(blend==='A'){
+      x=a.x; y=a.y;
+      alpha = label==='ACQUISITION' ? (a.x <= acqReveal*plotW ? 1 : 0.08) : 1;
+      col = 'rgba(166,225,250,0.8)';
+    } else if(blend==='AB'){
+      const bt = easeInOutCubic(segT('feat'));
+      x=lerp(a.x,b.x,bt); y=lerp(a.y,b.y,bt);
+      col='rgba(166,225,250,0.75)';
+    } else if(blend==='B'){
+      let bx=b.x, by=b.y;
+      if(clusterSplit>0){
+        const cc = clusterCenters[p.emitterId>=0?p.emitterId:0];
+        const cs = easeInOutCubic(clusterSplit);
+        bx = lerp(b.x, lerp(b.x,cc.x,0.6), cs); by = lerp(b.y, lerp(b.y,cc.y,0.6), cs);
+      }
+      x=bx; y=by;
+      col = clusterSplit>0.05 ? mixLerpColor('rgba(166,225,250,0.75)', emitterColor(p), clusterSplit) : 'rgba(166,225,250,0.75)';
+    } else {
+      const cc = clusterCenters[p.emitterId>=0?p.emitterId:0];
+      const bClustered = { x:lerp(b.x,cc.x,0.6), y:lerp(b.y,cc.y,0.6) };
+      const rt = easeInOutCubic(segT('recon'));
+      x=lerp(bClustered.x,c.x,rt); y=lerp(bClustered.y,c.y,rt);
+      col = emitterColor(p);
+    }
+    const isSel = sim.selectedId===p.id;
+    ctx.globalAlpha = alpha*(isSel?1:0.85);
+    ctx.beginPath(); ctx.arc(x,y, isSel?4.5:2.6, 0, Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    ctx.globalAlpha=1;
+    targets.push({ id:p.id, x:x+pad.l, y:y+pad.t, r:8 });
+  });
+
+  if(relAlpha>0.02){
+    ctx.globalAlpha = relAlpha*0.5;
+    sim.emitters.forEach((em,ei)=>{
+      const pts = sim.pulses.filter(p=>p.emitterId===ei).map(posB);
+      ctx.strokeStyle=em.color; ctx.lineWidth=0.8;
+      for(let i=1;i<pts.length;i++){ ctx.beginPath(); ctx.moveTo(pts[i-1].x,pts[i-1].y); ctx.lineTo(pts[i].x,pts[i].y); ctx.stroke(); }
+    });
+    ctx.globalAlpha=1;
+  }
+  if(clusterSplit>0.3 && blend!=='BC'){
+    sim.emitters.forEach((em,ei)=>{
+      const cc = clusterCenters[ei];
+      ctx.font='10px "IBM Plex Mono", monospace'; ctx.fillStyle=em.color; ctx.textAlign='center';
+      ctx.globalAlpha = clamp((clusterSplit-0.3)/0.4,0,1);
+      ctx.fillText('EMITTER 0'+(ei+1), cc.x, cc.y-14);
+      ctx.globalAlpha=1;
+    });
+  }
+  if(blend==='BC'){
+    const laneH = plotH/sim.emitters.length;
+    sim.emitters.forEach((em,ei)=>{
+      ctx.font='10px "IBM Plex Mono", monospace'; ctx.fillStyle=em.color; ctx.textAlign='left';
+      ctx.fillText('EMITTER 0'+(ei+1), 4, ei*laneH+laneH*0.6-14);
+    });
+  }
+  ctx.restore();
+  sim.hitTargets.overview = targets;
+  if(lbl) lbl.textContent = label;
+  const tag = document.getElementById('overviewTag');
+  if(tag) tag.textContent = t>=0.98 ? 'DEMO OUTPUT — SEPARATED' : (sim.running ? 'PROCESSING · '+label : 'MIXED SIGNAL');
+}
+
+/* ============================================================
+   REDRAW ORCHESTRATION
+   ============================================================ */
+function redrawView(key){
+  if(key==='time') drawTimeDomain();
+  else if(key==='feature') drawFeatureSpace();
+  else if(key==='freq') drawFreqView();
+  else if(key==='pri') drawPriView();
+  else if(key==='emitters') drawEmittersView();
+  else if(key==='overview') drawOverview();
+  else if(key==='waterfall') drawWaterfall();
+}
+function redrawAll(){
+  updateHud(); updateProcSteps(); updateTelemetry(); updateEmitterLegend();
+  if(isPanelActive('overview')) drawOverview();
+  if(isPanelActive('time')) drawTimeDomain();
+  if(isPanelActive('feature')) drawFeatureSpace();
+  if(isPanelActive('freq')) drawFreqView();
+  if(isPanelActive('pri')) drawPriView();
+  if(isPanelActive('waterfall')) drawWaterfall();
+  if(isPanelActive('emitters')) drawEmittersView();
+}
+
+/* ============================================================
+   HUD / PIPELINE / TELEMETRY
+   ============================================================ */
+function updateHud(){
+  const t = sim.progress;
+  const bounds = { acq:0.15, pdw:0.30, ana:0.70, out:1.0 };
+  document.querySelectorAll('.hud-stage').forEach(el=>{
+    const key = el.dataset.hud;
+    el.classList.remove('live','done');
+    if(!sim.generated) return;
+    const b = bounds[key];
+    const prevB = key==='acq'?0 : key==='pdw'?bounds.acq : key==='ana'?bounds.pdw : bounds.ana;
+    if(t>=b) el.classList.add('done'); else if(t>prevB) el.classList.add('live');
+  });
+}
+function updateProcSteps(){
+  const bounds = [0.15,0.30,0.55,0.70,0.85,1.0];
+  document.querySelectorAll('.proc-step').forEach((s,i)=>{
+    s.classList.remove('active','done');
+    const mark = s.querySelector('.proc-mark');
+    if(!sim.generated){ mark.textContent='○'; return; }
+    const lower = i===0?0:bounds[i-1], upper = bounds[i];
+    if(sim.progress>=upper){ s.classList.add('done'); mark.textContent='✓'; }
+    else if(sim.progress>lower){ s.classList.add('active'); mark.textContent='●'; }
+    else mark.textContent='○';
+  });
+}
+function updateTelemetry(){
+  const n = sim.generated ? sim.pulses.length : 0;
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  set('telPulses', sim.generated ? n : '—');
+  set('telPdw', sim.generated ? Math.round(sim.progress*n) : '—');
+  set('telEmit', sim.generated ? sim.emitters.length : '—');
+  set('telWindow', sim.generated ? sim.cfg.timeWindow+' μs' : '—');
+  const ref = sim.pulses.find(p=>p.id===sim.selectedId) || (sim.generated ? sim.pulses[sim.pulses.length-1] : null);
+  set('telRf', ref ? ref.rf.toFixed(2)+' GHz' : '—');
+  set('telPri', ref ? ref.pri.toFixed(2)+' μs' : '—');
+  set('mTotal', sim.generated ? n : '—');
+  set('mEmit', sim.generated ? sim.emitters.length : '—');
+  set('mProc', sim.generated ? Math.round(sim.progress*n) : '0');
+  set('mStatus', !sim.generated ? 'IDLE' : sim.running ? 'RUNNING' : (sim.progress>=0.98 ? 'COMPLETE' : 'READY'));
+  set('mNoise', sim.generated ? sim.cfg.noiseLevel.toUpperCase() : '—');
+  set('mSel', sim.selectedId || '—');
+  set('outputTag', sim.progress>=0.98 ? 'DEMO OUTPUT' : 'AWAITING RUN');
+}
+function updateEmitterLegend(){
+  const el = document.getElementById('emitterLegend'); if(!el) return;
+  if(!sim.generated || sim.progress<0.98){ el.innerHTML=''; return; }
+  el.innerHTML = sim.emitters.map((em,i)=>'<div class="legend-item" data-idx="'+i+'"><span class="legend-swatch" style="background:'+em.color+';"></span>EMITTER 0'+(i+1)+'</div>').join('');
+}
+
+/* ============================================================
+   PDW INSPECTOR / SELECTION
+   ============================================================ */
+function showPdwForEmitter(idx){
+  const pts = sim.pulses.filter(p=>p.emitterId===idx).slice(0,6);
+  const rows = pts.map(p=>'<tr><td>'+p.id+' · TOA</td><td>'+p.toa.toFixed(2)+' μs</td></tr><tr><td>'+p.id+' · RF</td><td>'+p.rf.toFixed(2)+' GHz</td></tr><tr><td>'+p.id+' · PRI</td><td>'+p.pri.toFixed(2)+' μs</td></tr>').join('');
+  document.getElementById('pdwBody').innerHTML = rows || '<tr><td colspan="2">No data</td></tr>';
+}
+function showPdwForPulse(p){
+  document.getElementById('pdwBody').innerHTML =
+    '<tr><td>PULSE ID</td><td>'+p.id+'</td></tr>'+
+    '<tr><td>TOA</td><td>'+p.toa.toFixed(2)+' μs</td></tr>'+
+    '<tr><td>PRI</td><td>'+p.pri.toFixed(2)+' μs</td></tr>'+
+    '<tr><td>RF</td><td>'+p.rf.toFixed(2)+' GHz</td></tr>'+
+    '<tr><td>PW</td><td>'+p.pw.toFixed(2)+' μs</td></tr>'+
+    '<tr><td>AOA</td><td>'+p.aoa.toFixed(1)+'°</td></tr>'+
+    '<tr><td>EMITTER</td><td>'+(p.emitterId>=0 ? ('CANDIDATE 0'+(p.emitterId+1)) : 'UNASSIGNED / NOISE')+'</td></tr>';
+}
+function updateInspector(clientX, clientY){
+  const el = document.getElementById('pulseInspector');
+  const p = sim.pulses.find(pp=>pp.id===sim.selectedId);
+  if(!p){ el.classList.remove('show'); return; }
+  document.getElementById('piId').textContent = '#'+p.id;
+  document.getElementById('piToa').textContent = p.toa.toFixed(2)+' μs';
+  document.getElementById('piPri').textContent = p.pri.toFixed(2)+' μs';
+  document.getElementById('piRf').textContent = p.rf.toFixed(2)+' GHz';
+  document.getElementById('piPw').textContent = p.pw.toFixed(2)+' μs';
+  document.getElementById('piAoa').textContent = p.aoa.toFixed(1)+'°';
+  document.getElementById('piEmitter').textContent = p.emitterId>=0 ? ('CANDIDATE 0'+(p.emitterId+1)) : 'UNASSIGNED';
+  el.classList.add('show');
+  if(clientX!=null){
+    const ew = el.offsetWidth||230, eh = el.offsetHeight||220;
+    let x = clientX+16, y = clientY-20;
+    x = Math.min(x, window.innerWidth-ew-12); y = Math.max(12, Math.min(y, window.innerHeight-eh-12));
+    el.style.left = x+'px'; el.style.top = y+'px';
+  }
+}
+function selectPulse(id, evt){
+  sim.selectedId = id;
+  const p = sim.pulses.find(pp=>pp.id===id);
+  if(p) showPdwForPulse(p);
+  updateInspector(evt?evt.clientX:null, evt?evt.clientY:null);
+  redrawAll();
+}
+function clearSelection(){
+  sim.selectedId = null;
+  const insp = document.getElementById('pulseInspector'); if(insp) insp.classList.remove('show');
+  redrawAll();
+}
+
+/* ============================================================
+   POINTER / HIT-TEST INTERACTION
+   ============================================================ */
+function ensureTooltip(container){
+  let t = container.querySelector('.canvas-tooltip');
+  if(!t){ t=document.createElement('div'); t.className='canvas-tooltip'; container.appendChild(t); }
+  return t;
+}
+function attachCanvasInteraction(canvas, key){
+  if(!canvas) return;
+  const tooltip = ensureTooltip(canvas.parentElement);
+  let downX=0, downY=0, moved=false;
+  function findHit(evt){
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX-rect.left, y = evt.clientY-rect.top;
+    const targets = sim.hitTargets[key]||[];
+    let best=null, bestD=999;
+    targets.forEach(tg=>{ const d=Math.hypot(tg.x-x,tg.y-y); if(d<tg.r+4 && d<bestD){ bestD=d; best=tg; } });
+    return best;
+  }
+  canvas.addEventListener('mousedown', (evt)=>{ downX=evt.clientX; downY=evt.clientY; moved=false; });
+  canvas.addEventListener('mousemove', (evt)=>{
+    if(Math.hypot(evt.clientX-downX, evt.clientY-downY) > 4) moved = true;
+    const hit = findHit(evt);
+    sim.hoverId = hit ? hit.id : null;
+    const rect = canvas.getBoundingClientRect();
+    if(hit){
+      const p = sim.pulses.find(pp=>pp.id===hit.id);
+      if(p){
+        tooltip.innerHTML = '<b>PULSE '+p.id+'</b><br>TOA '+p.toa.toFixed(2)+' μs<br>RF '+p.rf.toFixed(2)+' GHz<br>PRI '+p.pri.toFixed(2)+' μs<br>PW '+p.pw.toFixed(2)+' μs<br>AOA '+p.aoa.toFixed(1)+'°';
+        tooltip.style.left = (evt.clientX-rect.left)+'px';
+        tooltip.style.top = (evt.clientY-rect.top)+'px';
+        tooltip.classList.add('show');
+      }
+    } else { tooltip.classList.remove('show'); }
+    redrawView(key);
+  });
+  canvas.addEventListener('mouseleave', ()=>{ sim.hoverId=null; tooltip.classList.remove('show'); redrawView(key); });
+  canvas.addEventListener('click', (evt)=>{
+    if(moved) return;
+    const hit = findHit(evt);
+    if(hit) selectPulse(hit.id, evt); else clearSelection();
+  });
+}
+function bindZoomButtons(){
+  document.querySelectorAll('[data-zoom]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const key = btn.dataset.zoom;
+      if(key==='time-in') sim.view.time.scale = Math.min(6, sim.view.time.scale*1.35);
+      if(key==='time-out') sim.view.time.scale = Math.max(1, sim.view.time.scale/1.35);
+      if(key==='time-reset') sim.view.time = { scale:1, offset:0 };
+      if(key==='feat-in') sim.view.feature.scale = Math.min(6, sim.view.feature.scale*1.35);
+      if(key==='feat-out') sim.view.feature.scale = Math.max(1, sim.view.feature.scale/1.35);
+      if(key==='feat-reset') sim.view.feature = { scale:1, offset:0, panX:0, panY:0 };
+      redrawAll();
+    });
+  });
+}
+function bindWheelPan(canvas, view, isFeature){
+  if(!canvas) return;
+  canvas.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    const factor = e.deltaY<0 ? 1.1 : 0.9;
+    view.scale = clamp(view.scale*factor, 1, 8);
+    redrawAll();
+  }, { passive:false });
+  let dragging=false, lastX=0, lastY=0;
+  canvas.addEventListener('mousedown', (e)=>{ dragging=true; lastX=e.clientX; lastY=e.clientY; });
+  window.addEventListener('mousemove', (e)=>{
+    if(!dragging) return;
+    const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+    if(isFeature){ view.panX+=dx; view.panY+=dy; } else { view.offset -= dx; }
+    redrawAll();
+  });
+  window.addEventListener('mouseup', ()=>{ dragging=false; });
+  canvas.addEventListener('dblclick', ()=>{ view.scale=1; view.offset=0; view.panX=0; view.panY=0; redrawAll(); });
+}
+
+/* ============================================================
+   TAB SWITCHING
+   ============================================================ */
+function switchTab(tab){
+  sim.activeTab = tab;
+  document.querySelectorAll('.viz-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.querySelectorAll('.viz-panel').forEach(p=>p.classList.toggle('active', p.dataset.panel===tab));
+  requestAnimationFrame(redrawAll);
+}
+
+/* ============================================================
+   CONTROLS / RUN LOOP
+   ============================================================ */
+function readConfigFromUI(){
+  sim.cfg.emitterCount = parseInt(document.getElementById('emCount').textContent,10) || 3;
+  sim.cfg.freqMode = document.getElementById('simMode').value;
+  sim.cfg.priMode = document.getElementById('simPri').value;
+  sim.cfg.noiseLevel = document.getElementById('simNoise').value;
+  sim.cfg.timeWindow = parseInt(document.getElementById('simWindow').value,10);
+  sim.cfg.speed = parseInt(document.getElementById('simSpeed').value,10);
+}
+function generateStream(){
+  readConfigFromUI();
+  const model = generateSignalModel(sim.cfg);
+  sim.emitters = model.emitters; sim.pulses = model.pulses;
+  sim.generated = true; sim.running = false; sim.paused = false; sim.progress = 0;
+  sim.selectedId = null; sim.hoverId = null;
+  sim.view.time = { scale:1, offset:0 };
+  sim.view.feature = { scale:1, offset:0, panX:0, panY:0 };
+  const scrub = document.getElementById('scrubSlider'); if(scrub) scrub.value = 0;
+  const pauseBtn = document.getElementById('btnPause'); if(pauseBtn) pauseBtn.textContent = 'PAUSE';
+  initWaterfall();
+  const insp = document.getElementById('pulseInspector'); if(insp) insp.classList.remove('show');
+  document.getElementById('pdwBody').innerHTML = '<tr><td colspan="2" style="color:var(--text-faint);">Select a pulse in any chart, or an emitter above, to inspect its PDW.</td></tr>';
+  redrawAll();
+}
+function runDeinterleave(){
+  if(!sim.generated || sim.running) return;
+  sim.running = true; sim.paused = false;
+  if(sim.progress>=1) sim.progress = 0;
+  if(prefersReducedMotion()){ sim.progress = 1; onRunComplete(); }
+}
+function onRunComplete(){
+  sim.running = false; sim.progress = 1;
+  const scrub = document.getElementById('scrubSlider'); if(scrub) scrub.value = 1000;
+  redrawAll();
+}
+function pauseToggle(){
+  if(!sim.running) return;
+  sim.paused = !sim.paused;
+  const btn = document.getElementById('btnPause'); if(btn) btn.textContent = sim.paused ? 'RESUME' : 'PAUSE';
+}
+function resetSimulation(){ generateStream(); }
+function replayDemo(){
+  if(!sim.generated) generateStream();
+  switchTab('overview');
+  sim.progress = 0; sim.running = true; sim.paused = false;
+  const scrub = document.getElementById('scrubSlider'); if(scrub) scrub.value = 0;
+}
+function toggleJudgeMode(){
+  sim.judgeMode = !sim.judgeMode;
+  const shell = document.getElementById('simShell'); if(shell) shell.classList.toggle('judge-mode', sim.judgeMode);
+  const btn = document.getElementById('btnJudge'); if(btn) btn.textContent = sim.judgeMode ? 'EXIT JUDGE MODE' : 'JUDGE DEMO';
+  if(sim.judgeMode) runGuidedSequence();
+}
+function runGuidedSequence(){
+  if(!sim.generated) generateStream();
+  const tabs = ['overview','time','freq','feature','emitters'];
+  let i = 0;
+  switchTab('overview'); sim.progress=0; sim.running=true; sim.paused=false;
+  function next(){
+    if(!sim.judgeMode) return;
+    i++;
+    if(i<tabs.length){ switchTab(tabs[i]); setTimeout(next, 6000); }
+  }
+  setTimeout(next, 9000);
+}
+
+/* ============================================================
+   ANIMATION LOOP — requestAnimationFrame, no setInterval
+   ============================================================ */
+function animFrame(ts){
+  if(!sim.lastFrameTime) sim.lastFrameTime = ts;
+  const dt = ts - sim.lastFrameTime;
+  sim.lastFrameTime = ts;
+  if(sim.running && !sim.paused){
+    const speedFactor = { 1:0.00006, 2:0.00012, 3:0.00022 }[sim.cfg.speed] || 0.00012;
+    sim.progress = clamp(sim.progress + dt*speedFactor, 0, 1);
+    const scrub = document.getElementById('scrubSlider'); if(scrub) scrub.value = Math.round(sim.progress*1000);
+    if(sim.progress>=1) onRunComplete();
+  }
+  stepWaterfall(dt);
+  if(document.visibilityState==='visible') redrawAll();
+  sim.rafId = requestAnimationFrame(animFrame);
+}
+function startLoop(){ if(!sim.rafId) sim.rafId = requestAnimationFrame(animFrame); }
+function stopLoop(){ if(sim.rafId){ cancelAnimationFrame(sim.rafId); sim.rafId=null; } sim.lastFrameTime=0; }
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden') stopLoop(); else if(simBooted) startLoop();
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function initSimulation(){
+  if(simBooted){ redrawAll(); startLoop(); return; }
+  simBooted = true;
+
+  document.getElementById('emMinus').onclick = ()=>{ const el=document.getElementById('emCount'); el.textContent = Math.max(2, parseInt(el.textContent,10)-1); };
+  document.getElementById('emPlus').onclick = ()=>{ const el=document.getElementById('emCount'); el.textContent = Math.min(5, parseInt(el.textContent,10)+1); };
+  document.getElementById('btnGenerate').onclick = generateStream;
+  document.getElementById('btnRun').onclick = runDeinterleave;
+  document.getElementById('btnPause').onclick = pauseToggle;
+  document.getElementById('btnReset').onclick = resetSimulation;
+  document.getElementById('btnReplay').onclick = replayDemo;
+  document.getElementById('btnJudge').onclick = toggleJudgeMode;
+  document.getElementById('btnClearSel').onclick = clearSelection;
+  document.getElementById('piClose').onclick = clearSelection;
+
+  document.getElementById('scrubSlider').addEventListener('input', (e)=>{
+    if(!sim.generated) return;
+    sim.running = false;
+    sim.progress = clamp(parseInt(e.target.value,10)/1000, 0, 1);
+    redrawAll();
+  });
+  document.getElementById('featX').addEventListener('change', (e)=>{ sim.featX = e.target.value; redrawAll(); });
+  document.getElementById('featY').addEventListener('change', (e)=>{ sim.featY = e.target.value; redrawAll(); });
+
+  document.querySelectorAll('.viz-tab').forEach(btn=> btn.addEventListener('click', ()=> switchTab(btn.dataset.tab)));
+
+  document.getElementById('emitterLegend').addEventListener('click', (e)=>{
+    const item = e.target.closest('.legend-item'); if(!item) return;
+    document.querySelectorAll('.legend-item').forEach(l=>l.classList.remove('selected'));
+    item.classList.add('selected');
+    showPdwForEmitter(parseInt(item.dataset.idx,10));
+  });
+
+  document.getElementById('wfLive').addEventListener('click', ()=>{ sim.waterfall.live=true; toggleWfButtons('live'); });
+  document.getElementById('wfPause').addEventListener('click', ()=>{ sim.waterfall.live=false; toggleWfButtons('pause'); });
+  document.getElementById('wfClear').addEventListener('click', ()=>{ sim.waterfall.rows=[]; });
+
+  bindZoomButtons();
+  bindWheelPan(document.getElementById('cvTime'), sim.view.time, false);
+  bindWheelPan(document.getElementById('cvFeature'), sim.view.feature, true);
+
+  attachCanvasInteraction(document.getElementById('cvTime'),'time');
+  attachCanvasInteraction(document.getElementById('cvFeature'),'feature');
+  attachCanvasInteraction(document.getElementById('cvFreq'),'freq');
+  attachCanvasInteraction(document.getElementById('cvPri'),'pri');
+  attachCanvasInteraction(document.getElementById('cvEmitters'),'emitters');
+  attachCanvasInteraction(document.getElementById('cvOverview'),'overview');
+
+  window.addEventListener('resize', ()=> redrawAll());
+
+  generateStream();
+  startLoop();
+}
+function toggleWfButtons(which){
+  document.getElementById('wfLive').classList.toggle('on', which==='live');
+  document.getElementById('wfPause').classList.toggle('on', which==='pause');
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+renderRoute();
+</script>
+</body>
+</html>
